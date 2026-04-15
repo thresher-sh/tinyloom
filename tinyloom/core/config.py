@@ -23,6 +23,8 @@ class CompactionConfig:
     enabled: bool = True
     threshold: float = 0.8
     strategy: str = "summarize"
+    model: str | None = None       # None = use main model
+    provider: str | None = None    # None = use main provider
 
 
 @dataclass

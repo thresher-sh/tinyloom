@@ -34,6 +34,8 @@ class TestDefaults:
         assert cc.enabled is True
         assert cc.threshold == 0.8
         assert cc.strategy == "summarize"
+        assert cc.model is None
+        assert cc.provider is None
 
 
 class TestLoadConfig:
@@ -118,3 +120,25 @@ model:
         cfg = load_config()
         assert cfg.compaction.enabled is False
         assert cfg.compaction.threshold == 0.5
+
+    def test_compaction_model_provider_from_yaml(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        yaml_content = (
+            "compaction:\n"
+            "  model: claude-haiku-4-5-20251001\n"
+            "  provider: anthropic\n"
+        )
+        (tmp_path / "tinyloom.yaml").write_text(yaml_content)
+        cfg = load_config()
+        assert cfg.compaction.model == "claude-haiku-4-5-20251001"
+        assert cfg.compaction.provider == "anthropic"
+
+    def test_compaction_model_only_from_yaml(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        yaml_content = "compaction:\n  model: gpt-4o-mini\n"
+        (tmp_path / "tinyloom.yaml").write_text(yaml_content)
+        cfg = load_config()
+        assert cfg.compaction.model == "gpt-4o-mini"
+        assert cfg.compaction.provider is None

@@ -79,6 +79,7 @@ class Agent:
                     self.config.model.context_window,
                     self.config.compaction.threshold,
                     self.config.compaction.strategy,
+                    config=self.config,
                 )
                 if compacted is not None:
                     self.state.messages = compacted

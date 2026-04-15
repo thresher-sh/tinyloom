@@ -19,10 +19,13 @@ compaction:
   enabled: true
   threshold: 0.8
   strategy: summarize
+  # model: claude-haiku-4-5-20251001  # cheaper model for summaries
+  # provider: anthropic
 
 # plugins:
 #   - tinyloom.plugins.todo
 #   - tinyloom.plugins.mcp
+#   - tinyloom.plugins.hook_scripts
 
 # hook_scripts:
 #   tool_call:

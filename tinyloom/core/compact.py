@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from tinyloom.core.types import Message
 
 if TYPE_CHECKING:
+    from tinyloom.core.config import Config
     from tinyloom.providers.base import LLMProvider
 
 
@@ -39,6 +40,7 @@ async def maybe_compact(
     context_window: int,
     threshold: float,
     strategy: str,
+    config: Config | None = None,
 ) -> list[Message] | None:
     try:
         current_tokens = await provider.count_tokens(messages)
@@ -49,10 +51,40 @@ async def maybe_compact(
     if current_tokens < limit:
         return None
 
+    summary_provider = _get_summary_provider(provider, config)
+
     if strategy == "summarize":
-        return await _summarize(provider, messages)
+        return await _summarize(summary_provider, messages)
     else:
         return _truncate(messages)
+
+
+def _get_summary_provider(
+    default_provider: LLMProvider,
+    config: Config | None,
+) -> LLMProvider:
+    """Return a provider for compaction summaries.
+
+    If the config specifies a separate compaction model/provider, create
+    one. Otherwise fall back to the default provider.
+    """
+    if config is None:
+        return default_provider
+
+    comp = config.compaction
+    if comp.model is None and comp.provider is None:
+        return default_provider
+
+    from copy import copy
+    from tinyloom.core.config import ModelConfig
+    from tinyloom.providers import create_provider
+
+    mc = copy(config.model)
+    if comp.model is not None:
+        mc.model = comp.model
+    if comp.provider is not None:
+        mc.provider = comp.provider
+    return create_provider(mc)
 
 
 def _truncate(messages: list[Message]) -> list[Message]:
