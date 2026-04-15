@@ -9,7 +9,7 @@ from typing import Any, Callable
 
 from tinyloom.core.types import ToolDef  # re-export for convenience
 
-__all__ = ["Tool", "ToolRegistry", "tool", "ToolDef", "get_builtin_tools", "get_builtin_tools_with_exec"]
+__all__ = ["Tool", "ToolRegistry", "tool", "ToolDef", "get_builtin_tools"]
 
 
 @dataclass
@@ -207,54 +207,3 @@ def _bash_tool(input_data: dict) -> str:
 
 def get_builtin_tools() -> list[Tool]:
     return [_read_tool, _write_tool, _edit_tool, _grep_tool, _bash_tool]
-
-
-def _make_exec_tool(parent_config):
-    """Create the exec tool with the parent's config for defaults."""
-
-    async def exec_fn(inp: dict) -> str:
-        from tinyloom.core.agent import Agent
-        from copy import deepcopy
-
-        config = deepcopy(parent_config)
-        if inp.get("model"):
-            config.model.model = inp["model"]
-        if inp.get("system_prompt"):
-            config.system_prompt = inp["system_prompt"]
-
-        sub_registry = ToolRegistry()
-        for t in get_builtin_tools():  # excludes exec
-            sub_registry.register(t)
-
-        from tinyloom.core.hooks import HookRunner
-        sub_agent = Agent(config=config, tools=sub_registry, hooks=HookRunner())
-
-        parts = []
-        async for evt in sub_agent.run(inp["task"]):
-            if evt.type == "text_delta":
-                parts.append(evt.text)
-        return "".join(parts)
-
-    return Tool(
-        name="exec",
-        description=(
-            "Launch a sub-agent to handle a specific task. "
-            "The sub-agent gets its own context and all tools except exec. "
-            "Use to delegate focused tasks like: 'write tests for X', 'refactor this file'. "
-            "Returns the sub-agent's final text response."
-        ),
-        input_schema={
-            "type": "object",
-            "properties": {
-                "task": {"type": "string", "description": "The task/prompt for the sub-agent"},
-                "model": {"type": "string", "description": "Override model (optional)", "default": ""},
-                "system_prompt": {"type": "string", "description": "Override system prompt (optional)", "default": ""},
-            },
-            "required": ["task"],
-        },
-        function=exec_fn,
-    )
-
-
-def get_builtin_tools_with_exec(config) -> list[Tool]:
-    return get_builtin_tools() + [_make_exec_tool(config)]

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import logging
 import sys
 
 from tinyloom import __version__
@@ -23,6 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--system", help="Override system prompt")
     parser.add_argument("--json", action="store_true", help="Force JSON output")
     parser.add_argument("--no-plugins", action="store_true", help="Disable all plugins")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging")
     parser.add_argument("--version", action="version", version=f"tinyloom {__version__}")
     return parser
 
@@ -43,6 +45,9 @@ def main() -> int:
 
 
 async def _run(args: argparse.Namespace) -> int:
+    if args.verbose:
+        logging.basicConfig(level=logging.DEBUG, format="%(name)s %(levelname)s %(message)s")
+
     config = load_config(args.config)
     if args.model:
         config.model.model = args.model

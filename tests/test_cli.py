@@ -19,6 +19,7 @@ def test_build_parser_no_args():
     assert args.stdin is False
     assert args.no_plugins is False
     assert args.system is None
+    assert args.verbose is False
 
 
 def test_build_parser_prompt_arg():
@@ -79,6 +80,18 @@ def test_build_parser_json_flag():
     parser = build_parser()
     args = parser.parse_args(["--json"])
     assert args.json is True
+
+
+def test_build_parser_verbose_short_flag():
+    parser = build_parser()
+    args = parser.parse_args(["-v"])
+    assert args.verbose is True
+
+
+def test_build_parser_verbose_long_flag():
+    parser = build_parser()
+    args = parser.parse_args(["--verbose"])
+    assert args.verbose is True
 
 
 # ---------------------------------------------------------------------------

@@ -11,6 +11,12 @@ If you are looking for a bigger client, take a look at one of these:
 - [pi-mono coding-agent](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent)
 - [opencode](https://github.com/anomalyco/opencode)
 
+## Safety
+
+tinyloom has **no permission system, no approval gates, and no filesystem sandboxing** by default. The agent can read, write, delete, and execute anything your user account can. Do not run it outside of a container or sandbox on a machine you care about.
+
+Use [microsandbox](docs/sandbox.md) or another isolation layer for untrusted workloads. If you want tool approval or allowlists, build a [plugin](docs/creating-plugins.md) or [hook](docs/custom-hooks.md) for it.
+
 ## Quick start
 
 ```bash
@@ -44,14 +50,14 @@ See [docs/getting-started.md](docs/getting-started.md) for full setup instructio
 
 ## Features
 
-- **Built-in tools**: `read`, `write`, `edit` (str_replace), `grep` (ripgrep), `bash`, `exec` (sub-agent)
+- **Built-in tools**: `read`, `write`, `edit` (str_replace), `grep` (ripgrep), `bash`
 - **Providers**: Anthropic and OpenAI-compatible APIs (vLLM, Ollama, Together, Groq, LM Studio, Azure)
 - **Compaction**: automatic context summarization when approaching the context window limit
 - **Hooks**: react to any agent event (tool calls, messages, errors) with sync or async functions
 - **Plugins**: extend the agent with tools, hooks, and custom logic
 - **MCP**: connect to Model Context Protocol servers for external tools
 - **TUI**: interactive terminal interface with streaming, slash commands, and token tracking
-- **Sub-agents**: delegate focused tasks with the `exec` tool
+- **Sub-agents**: delegate focused tasks with the `subagent` plugin
 
 ## Config
 
@@ -103,6 +109,17 @@ tinyloom is intentionally small. Extend it instead:
 - [Custom Providers](docs/custom-providers.md)
 - [Design Decisions](docs/design-decisions.md)
 - [Running in a Sandbox](docs/sandbox.md)
+
+## Size
+
+The whole thing is ~1,471 lines of Python as of 2026.04.15.
+
+| Area | Files | Lines |
+|------|-------|-------|
+| **core** (agent, tools, config, compaction, hooks, types) | 7 | 706 |
+| **cli** | 1 | 92 |
+| **tui** | 1 | 216 |
+| **plugins** (subagent, todo, mcp, hook_scripts) | 5 | 457 |
 
 ## License
 

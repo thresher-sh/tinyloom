@@ -8,6 +8,7 @@ model:
   max_tokens: 8192
   context_window: 200000
   temperature: 0.0
+  # sync_http: true  # use sync HTTP for TLS -- required in microsandbox VMs
 
 system_prompt: |
   You are a skilled coding assistant. You have access to tools for
@@ -23,6 +24,7 @@ compaction:
   # provider: anthropic
 
 # plugins:
+#   - tinyloom.plugins.subagent
 #   - tinyloom.plugins.todo
 #   - tinyloom.plugins.mcp
 #   - tinyloom.plugins.hook_scripts

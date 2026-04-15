@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import AsyncIterator
 
@@ -20,6 +21,8 @@ class AnthropicProvider:
         if config.base_url:
             kwargs["base_url"] = config.base_url
         self.client = anthropic.AsyncAnthropic(**kwargs)
+        if config.sync_http:
+            self.sync_client = anthropic.Anthropic(**kwargs)
 
     async def stream(
         self,
@@ -33,12 +36,13 @@ class AnthropicProvider:
             kwargs["tools"] = self._format_tools(tools)
 
         try:
-            async with self.client.messages.stream(**kwargs) as stream:
-                async for text_delta in stream.text_stream:
+            final = None
+            async for tag, value in self._iter_stream(kwargs):
+                if tag == "text":
                     log.debug("text delta received")
-                    yield StreamEvent(type="text", text=text_delta)
-
-                final = await stream.get_final_message()
+                    yield StreamEvent(type="text", text=value)
+                elif tag == "final":
+                    final = value
 
             assembled_text = ""
             tool_calls: list[ToolCall] = []
@@ -63,6 +67,41 @@ class AnthropicProvider:
             log.error("Anthropic API error: %s", e)
             yield StreamEvent(type="error", error=str(e))
 
+    async def _iter_stream(self, kwargs: dict) -> AsyncIterator[tuple]:
+        """Yield (tag, value) pairs from either the async or sync client.
+
+        Tags: "text" for deltas, "final" for the completed message.
+        """
+        if self.config.sync_http:
+            queue: asyncio.Queue = asyncio.Queue()
+            error: list[Exception] = []
+
+            def _run() -> None:
+                try:
+                    with self.sync_client.messages.stream(**kwargs) as stream:
+                        for text_delta in stream.text_stream:
+                            queue.put_nowait(("text", text_delta))
+                        queue.put_nowait(("final", stream.get_final_message()))
+                except Exception as e:
+                    error.append(e)
+                finally:
+                    queue.put_nowait(None)
+
+            task = asyncio.get_event_loop().run_in_executor(None, _run)
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                yield item
+            await task
+            if error:
+                raise error[0]
+        else:
+            async with self.client.messages.stream(**kwargs) as stream:
+                async for text_delta in stream.text_stream:
+                    yield ("text", text_delta)
+                yield ("final", await stream.get_final_message())
+
     async def chat(
         self,
         messages: list[Message],
@@ -71,7 +110,12 @@ class AnthropicProvider:
     ) -> Message:
         kwargs = self._build_kwargs(messages, system)
         kwargs["max_tokens"] = max_tokens
-        response = await self.client.messages.create(**kwargs)
+        if self.config.sync_http:
+            response = await asyncio.to_thread(
+                self.sync_client.messages.create, **kwargs
+            )
+        else:
+            response = await self.client.messages.create(**kwargs)
         text = "".join(block.text for block in response.content if block.type == "text")
         return Message(role="assistant", content=text)
 
@@ -80,13 +124,18 @@ class AnthropicProvider:
         messages: list[Message],
         system: str = "",
     ) -> int:
-        kwargs: dict = {
+        count_kwargs: dict = {
             "model": self.config.model,
             "messages": self._format_messages(messages),
         }
         if system:
-            kwargs["system"] = system
-        result = await self.client.messages.count_tokens(**kwargs)
+            count_kwargs["system"] = system
+        if self.config.sync_http:
+            result = await asyncio.to_thread(
+                self.sync_client.messages.count_tokens, **count_kwargs
+            )
+        else:
+            result = await self.client.messages.count_tokens(**count_kwargs)
         return result.input_tokens
 
     def _build_kwargs(self, messages: list[Message], system: str) -> dict:

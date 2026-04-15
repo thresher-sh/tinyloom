@@ -24,6 +24,8 @@ msb run python \
   -- sh -c "pip install -q uv && uv sync --extra dev -q && uv run tinyloom 'create a hello.py and run it'"
 ```
 
+API calls require `sync_http: true` in your `tinyloom.yaml`. See [TLS / connection errors](#tls--connection-errors).
+
 ## Persistent Sandbox
 
 For repeated use, create a named sandbox and set it up once.
@@ -53,7 +55,20 @@ msb exec tinyloom -w /app -- uv sync --extra dev
 
 For x86_64 Linux, replace `aarch64-unknown-linux-gnu` with `x86_64-unknown-linux-musl` in the ripgrep URL.
 
-### 3. Run tinyloom
+### 3. Configure for sandbox
+
+Add `sync_http: true` to your `tinyloom.yaml`:
+
+```yaml
+model:
+  provider: anthropic
+  model: claude-sonnet-4-20250514
+  sync_http: true
+```
+
+This switches the SDK clients from async to sync HTTP, which uses `ssl.SSLSocket` instead of `ssl.MemoryBIO` for TLS. Required because msb's [smoltcp](https://github.com/smoltcp-rs/smoltcp) user-space networking stack doesn't support the async TLS upgrade path. See [Troubleshooting](#tls--connection-errors).
+
+### 4. Run tinyloom
 
 Headless:
 
@@ -75,10 +90,11 @@ msb exec tinyloom -w /app \
 Run tests:
 
 ```bash
-msb exec tinyloom -w /app -- uv run pytest tests/ -q
+msb exec tinyloom -w /app \
+  -- uv run pytest tests/ -q
 ```
 
-### 4. Manage the sandbox
+### 5. Manage the sandbox
 
 ```bash
 msb list              # list sandboxes
@@ -92,23 +108,33 @@ msb remove tinyloom   # delete
 msb supports secret injection that prevents the guest from exfiltrating keys to unauthorized hosts. The real key is only sent when requests go to the allowed host:
 
 ```bash
+# Anthropic
 msb create python \
   -n tinyloom-secure \
   -m 1G -c 2 \
   -v $(pwd):/app -w /app \
   --secret "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}@api.anthropic.com"
 
-msb exec tinyloom-secure -w /app -- uv run tinyloom "do something"
-```
-
-For OpenAI:
-
-```bash
+# OpenAI
 msb create python \
   -n tinyloom-secure \
   -m 1G -c 2 \
   -v $(pwd):/app -w /app \
   --secret "OPENAI_API_KEY=${OPENAI_API_KEY}@api.openai.com"
+
+# Fireworks AI (or any OpenAI-compatible provider)
+msb create python \
+  -n tinyloom-secure \
+  -m 1G -c 2 \
+  -v $(pwd):/app -w /app \
+  --secret "FIREWORKS_API_KEY=${FIREWORKS_API_KEY}@api.fireworks.ai"
+```
+
+Then run as usual:
+
+```bash
+msb exec tinyloom-secure -w /app \
+  -- uv run tinyloom "do something"
 ```
 
 The agent can read the env var, but the actual key value is only attached to HTTP requests headed for the allowed host. Even if the agent tries to send the key elsewhere, it won't have the real value.
@@ -166,6 +192,45 @@ msb create python -n tinyloom -m 1G \
   --idle-timeout 5m \
   -v .:/app -w /app
 ```
+
+## Troubleshooting
+
+### TLS / connection errors
+
+If you see `start_tls.failed`, `ConnectError(EndOfStream())`, or `Connection error.`:
+
+**Root cause:** msb routes all VM network traffic through [smoltcp](https://github.com/smoltcp-rs/smoltcp), a user-space TCP/IP stack. This stack doesn't properly handle TLS handshakes done via `ssl.MemoryBIO` -- the path that Python's `anyio` → `httpcore` → `httpx` → openai/anthropic SDKs use for async HTTPS. Synchronous TLS (`ssl.SSLSocket`) works fine.
+
+**Fix:** Set `sync_http: true` in your `tinyloom.yaml`:
+
+```yaml
+model:
+  sync_http: true
+```
+
+This makes the SDK clients use sync HTTP (which uses `ssl.SSLSocket`) bridged to async via thread pools. No performance impact for a CLI tool.
+
+Run `tinyloom -v` to see the full TLS trace if you need to debug further.
+
+### apt-get signature errors
+
+```
+OpenPGP signature verification failed: Not live until ...
+```
+
+Clock skew. msb VMs don't run NTP and the clock freezes across `msb stop` / `msb start` cycles. Sync it before running `apt-get`:
+
+```bash
+msb exec tinyloom -- date -s "$(date -u '+%Y-%m-%d %H:%M:%S')"
+```
+
+### `.venv` recreation warning
+
+```
+warning: Ignoring existing virtual environment linked to non-existent Python interpreter
+```
+
+Harmless. The host's `.venv` is mounted into the sandbox via `-v .:/app` but was built with a different Python. uv detects this and recreates it automatically.
 
 ## Notes
 

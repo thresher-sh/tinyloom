@@ -275,14 +275,21 @@ class TestBashTool:
 
 
 # ---------------------------------------------------------------------------
-# Task 17: Exec tool
+# Subagent plugin
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_exec_tool_exists():
-    from tinyloom.core.tools import get_builtin_tools_with_exec
+async def test_subagent_plugin_registers_tool():
     from tinyloom.core.config import Config
-    tools = {t.name: t for t in get_builtin_tools_with_exec(Config())}
-    assert "exec" in tools
-    assert tools["exec"].function is not None
+    from tinyloom.core.agent import Agent
+    from tinyloom.core.hooks import HookRunner
+    from tinyloom.plugins.subagent import activate
+
+    agent = Agent(config=Config(), tools=ToolRegistry(), hooks=HookRunner())
+    for t in get_builtin_tools():
+        agent.tools.register(t)
+    activate(agent)
+
+    assert agent.tools.get("subagent") is not None
+    assert hasattr(agent, "_subagent_tui")

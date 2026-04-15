@@ -16,6 +16,7 @@ class ModelConfig:
     max_tokens: int = 8192
     context_window: int = 200_000
     temperature: float = 0.0
+    sync_http: bool = False
 
 
 @dataclass
@@ -36,6 +37,14 @@ class Config:
     hooks: dict[str, list[str]] = field(default_factory=dict)
     hook_scripts: dict[str, list[dict[str, str]]] = field(default_factory=dict)
     max_turns: int = 200
+
+    def get_system_prompt(self, tool_names: list[str]) -> str:
+        """Return system prompt with available tools appended."""
+        base = self.system_prompt
+        if tool_names:
+            tools_list = ", ".join(sorted(tool_names))
+            base = f"{base}\n\nAvailable tools: {tools_list}"
+        return base
 
 
 def load_config(path: str | Path | None = None) -> Config:

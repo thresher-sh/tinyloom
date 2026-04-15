@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import AsyncIterator
@@ -21,6 +22,8 @@ class OpenAIProvider:
         if config.base_url:
             kwargs["base_url"] = config.base_url
         self.client = openai.AsyncOpenAI(**kwargs)
+        if config.sync_http:
+            self.sync_client = openai.OpenAI(**kwargs)
 
     async def stream(
         self,
@@ -34,36 +37,30 @@ class OpenAIProvider:
             kwargs["tools"] = self._format_tools(tools)
 
         try:
-            # tool_calls indexed by their position index in the chunk stream
             tool_chunks: dict[int, dict] = {}
             assembled_text = ""
 
-            async with await self.client.chat.completions.create(**kwargs) as stream:
-                async for chunk in stream:
-                    if not chunk.choices:
-                        continue
-                    delta = chunk.choices[0].delta
+            async for chunk in self._iter_chunks(kwargs):
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
 
-                    if delta.content:
-                        log.debug("text delta received")
-                        assembled_text += delta.content
-                        yield StreamEvent(type="text", text=delta.content)
+                if delta.content:
+                    log.debug("text delta received")
+                    assembled_text += delta.content
+                    yield StreamEvent(type="text", text=delta.content)
 
-                    if delta.tool_calls:
-                        for tc_chunk in delta.tool_calls:
-                            idx = tc_chunk.index
-                            if idx not in tool_chunks:
-                                tool_chunks[idx] = {
-                                    "id": "",
-                                    "name": "",
-                                    "arguments": "",
-                                }
-                            if tc_chunk.id:
-                                tool_chunks[idx]["id"] = tc_chunk.id
-                            if tc_chunk.function and tc_chunk.function.name:
-                                tool_chunks[idx]["name"] = tc_chunk.function.name
-                            if tc_chunk.function and tc_chunk.function.arguments:
-                                tool_chunks[idx]["arguments"] += tc_chunk.function.arguments
+                if delta.tool_calls:
+                    for tc_chunk in delta.tool_calls:
+                        idx = tc_chunk.index
+                        if idx not in tool_chunks:
+                            tool_chunks[idx] = {"id": "", "name": "", "arguments": ""}
+                        if tc_chunk.id:
+                            tool_chunks[idx]["id"] = tc_chunk.id
+                        if tc_chunk.function and tc_chunk.function.name:
+                            tool_chunks[idx]["name"] = tc_chunk.function.name
+                        if tc_chunk.function and tc_chunk.function.arguments:
+                            tool_chunks[idx]["arguments"] += tc_chunk.function.arguments
 
             tool_calls: list[ToolCall] = []
             for idx in sorted(tool_chunks):
@@ -88,6 +85,36 @@ class OpenAIProvider:
             log.error("OpenAI API error: %s", e)
             yield StreamEvent(type="error", error=str(e))
 
+    async def _iter_chunks(self, kwargs: dict) -> AsyncIterator:
+        """Yield raw stream chunks from either the async or sync client."""
+        if self.config.sync_http:
+            queue: asyncio.Queue = asyncio.Queue()
+            error: list[Exception] = []
+
+            def _run() -> None:
+                try:
+                    with self.sync_client.chat.completions.create(**kwargs) as stream:
+                        for chunk in stream:
+                            queue.put_nowait(chunk)
+                except Exception as e:
+                    error.append(e)
+                finally:
+                    queue.put_nowait(None)
+
+            task = asyncio.get_event_loop().run_in_executor(None, _run)
+            while True:
+                chunk = await queue.get()
+                if chunk is None:
+                    break
+                yield chunk
+            await task
+            if error:
+                raise error[0]
+        else:
+            async with await self.client.chat.completions.create(**kwargs) as stream:
+                async for chunk in stream:
+                    yield chunk
+
     async def chat(
         self,
         messages: list[Message],
@@ -96,7 +123,12 @@ class OpenAIProvider:
     ) -> Message:
         kwargs = self._build_kwargs(messages, system)
         kwargs["max_tokens"] = max_tokens
-        response = await self.client.chat.completions.create(**kwargs)
+        if self.config.sync_http:
+            response = await asyncio.to_thread(
+                self.sync_client.chat.completions.create, **kwargs
+            )
+        else:
+            response = await self.client.chat.completions.create(**kwargs)
         text = response.choices[0].message.content or ""
         return Message(role="assistant", content=text)
 
@@ -106,20 +138,23 @@ class OpenAIProvider:
         system: str = "",
     ) -> int:
         formatted = self._format_messages(messages, system)
-        # Separate system instructions from the message list (Responses API format)
         instructions = None
         input_messages = formatted
         if formatted and formatted[0]["role"] == "system":
             instructions = formatted[0]["content"]
             input_messages = formatted[1:]
         try:
-            kwargs: dict = {"model": self.config.model, "input": input_messages}
+            count_kwargs: dict = {"model": self.config.model, "input": input_messages}
             if instructions:
-                kwargs["instructions"] = instructions
-            result = await self.client.responses.input_tokens.count(**kwargs)
+                count_kwargs["instructions"] = instructions
+            if self.config.sync_http:
+                result = await asyncio.to_thread(
+                    self.sync_client.responses.input_tokens.count, **count_kwargs
+                )
+            else:
+                result = await self.client.responses.input_tokens.count(**count_kwargs)
             return result.input_tokens
         except Exception:
-            # Fallback: rough char-based estimate
             text = " ".join(
                 m.get("content", "") if isinstance(m.get("content"), str) else ""
                 for m in formatted

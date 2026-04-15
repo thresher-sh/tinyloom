@@ -35,8 +35,8 @@ class Agent:
             self.tools = tools
         else:
             self.tools = ToolRegistry()
-            from tinyloom.core.tools import get_builtin_tools_with_exec
-            for t in get_builtin_tools_with_exec(config):
+            from tinyloom.core.tools import get_builtin_tools
+            for t in get_builtin_tools():
                 self.tools.register(t)
 
         if provider is not None:
@@ -95,7 +95,7 @@ class Agent:
             async for stream_evt in self.provider.stream(
                 messages=self.state.messages,
                 tools=self.tools.all_defs(),
-                system=self.config.system_prompt,
+                system=self.config.get_system_prompt([t.name for t in self.tools.all_defs()]),
             ):
                 if stream_evt.type == "text":
                     evt = AgentEvent(type="text_delta", text=stream_evt.text)
