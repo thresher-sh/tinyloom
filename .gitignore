@@ -26,3 +26,8 @@ htmlcov/
 # Environment
 .env
 *.local.yaml
+tinyloom.yaml
+
+# Other
+*.deb
+ripgrep*/

@@ -13,6 +13,7 @@ class ModelConfig:
     model: str = "claude-sonnet-4-20250514"
     base_url: str | None = None
     api_key: str | None = None
+    api_key_env: str | None = None  # custom env var name for API key
     max_tokens: int = 8192
     context_window: int = 200_000
     temperature: float = 0.0
