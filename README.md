@@ -102,6 +102,7 @@ tinyloom is intentionally small. Extend it instead:
 - [MCP Plugin](docs/mcp-plugin.md)
 - [Custom Providers](docs/custom-providers.md)
 - [Design Decisions](docs/design-decisions.md)
+- [Running in a Sandbox](docs/sandbox.md)
 
 ## License
 
