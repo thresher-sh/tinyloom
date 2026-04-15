@@ -35,7 +35,8 @@ class Agent:
             self.tools = tools
         else:
             self.tools = ToolRegistry()
-            for t in get_builtin_tools():
+            from tinyloom.core.tools import get_builtin_tools_with_exec
+            for t in get_builtin_tools_with_exec(config):
                 self.tools.register(t)
 
         if provider is not None:

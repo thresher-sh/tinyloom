@@ -273,3 +273,17 @@ class TestBashTool:
             reg.register(t)
         result = await reg.execute("bash", {"cmd": "sleep 10", "timeout": 1})
         assert "timeout" in result.lower() or "timed out" in result.lower() or "Timeout" in result
+
+
+# ---------------------------------------------------------------------------
+# Task 17: Exec tool
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_exec_tool_exists():
+    from tinyloom.core.tools import get_builtin_tools_with_exec
+    from tinyloom.core.config import Config
+    tools = {t.name: t for t in get_builtin_tools_with_exec(Config())}
+    assert "exec" in tools
+    assert tools["exec"].function is not None
