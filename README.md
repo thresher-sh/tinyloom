@@ -17,10 +17,15 @@ tinyloom has **no permission system, no approval gates, and no filesystem sandbo
 
 Use [microsandbox](docs/sandbox.md) or another isolation layer for untrusted workloads. If you want tool approval or allowlists, build a [plugin](docs/creating-plugins.md) or [hook](docs/custom-hooks.md) for it.
 
+## Install
+
+```bash
+uv tool install tinyloom   # or: pip install tinyloom
+```
+
 ## Quick start
 
 ```bash
-uv add tinyloom
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
