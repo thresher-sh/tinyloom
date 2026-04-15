@@ -1,30 +1,108 @@
 # tinyloom
 
-Extremely Tiny Agent...
+A tiny, SDK-first coding agent harness in Python.
 
 ## Why this exists
 
-We needed an extremely tiny harness for https://github.com/thresher-sh/thresher and many harnesses just bring extra bloat we don't need. The harness bit is actually easy to implement, it's all the extra bells and whistles that take a lot.
+We needed an extremely tiny harness for [thresher](https://github.com/thresher-sh/thresher) and many harnesses just bring extra bloat we don't need. The harness bit is actually easy to implement -- it's all the extra bells and whistles that take a lot.
 
-If you are looking for a bigger client, take a look at one of these ones:
+If you are looking for a bigger client, take a look at one of these:
 
-- https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent
-- https://github.com/anomalyco/opencode
+- [pi-mono coding-agent](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent)
+- [opencode](https://github.com/anomalyco/opencode)
 
-We added a bit of configuration just to make some tasks easier, but for the most part it's let the model drive given a good set of bash tools. I bet if we just gave it bash it could figure it out because it could cat for read, sed/awk/echo/touch etc... But we are giving a few tools just to make it easier.
+## Quick start
 
-We also wanted python, cause it's what we are most familiar with and can hold the AI and stuff accountable while building. And we can bring it in as a library into our own systems as an sdk vs just commandline execution.
+```bash
+uv add tinyloom
+export ANTHROPIC_API_KEY=sk-ant-...
+```
 
-## Extra features
+CLI:
 
-Want extra features?
+```bash
+tinyloom "fix the bug in main.py"   # headless, JSONL output
+tinyloom                            # interactive TUI
+```
 
-- Add tools via mcp
-- Add extensions via plugin system
-- Add logic via hooks
+SDK:
 
-You can build what your heart desires... For us.. we just want tools, loop, no permissions, go to town boss agent.
+```python
+import asyncio
+from tinyloom import Agent, load_config
 
-## Models
+async def main():
+    agent = Agent(load_config())
+    async for event in agent.run("create a hello.py"):
+        if event.type == "text_delta":
+            print(event.text, end="")
 
-We support anthropic and openai endpoints. Most model providers offer that.. Configure your stuff in `tinyloom.yaml`. Don't know how? Ask your coding agent how.
+asyncio.run(main())
+```
+
+See [docs/getting-started.md](docs/getting-started.md) for full setup instructions.
+
+## Features
+
+- **Built-in tools**: `read`, `write`, `edit` (str_replace), `grep` (ripgrep), `bash`, `exec` (sub-agent)
+- **Providers**: Anthropic and OpenAI-compatible APIs (vLLM, Ollama, Together, Groq, LM Studio, Azure)
+- **Compaction**: automatic context summarization when approaching the context window limit
+- **Hooks**: react to any agent event (tool calls, messages, errors) with sync or async functions
+- **Plugins**: extend the agent with tools, hooks, and custom logic
+- **MCP**: connect to Model Context Protocol servers for external tools
+- **TUI**: interactive terminal interface with streaming, slash commands, and token tracking
+- **Sub-agents**: delegate focused tasks with the `exec` tool
+
+## Config
+
+Copy the example and edit:
+
+```bash
+cp tinyloom.example.yaml tinyloom.yaml
+```
+
+```yaml
+model:
+  provider: anthropic
+  model: claude-sonnet-4-20250514
+  context_window: 200000
+
+system_prompt: You are a skilled coding assistant. Be concise.
+
+compaction:
+  enabled: true
+  threshold: 0.8
+  strategy: summarize
+
+plugins:
+  - tinyloom.plugins.todo
+  - tinyloom.plugins.mcp
+  - tinyloom.plugins.hook_scripts
+
+max_turns: 200
+```
+
+API keys go in environment variables, not config. See [.env.example](.env.example).
+
+## Want more features?
+
+tinyloom is intentionally small. Extend it instead:
+
+- **More tools?** Connect MCP servers -- see [docs/mcp-plugin.md](docs/mcp-plugin.md)
+- **Custom logic?** Write a plugin -- see [docs/creating-plugins.md](docs/creating-plugins.md)
+- **Approval gates? Logging? Filters?** Use hooks -- see [docs/custom-hooks.md](docs/custom-hooks.md) or [docs/hook-scripts.md](docs/hook-scripts.md)
+- **Different model provider?** Set `base_url` -- see [docs/custom-providers.md](docs/custom-providers.md)
+
+## Docs
+
+- [Getting Started](docs/getting-started.md)
+- [Creating Plugins](docs/creating-plugins.md)
+- [Custom Hooks](docs/custom-hooks.md)
+- [Hook Scripts](docs/hook-scripts.md)
+- [MCP Plugin](docs/mcp-plugin.md)
+- [Custom Providers](docs/custom-providers.md)
+- [Design Decisions](docs/design-decisions.md)
+
+## License
+
+MIT
