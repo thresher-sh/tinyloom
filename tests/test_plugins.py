@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import stat
 import sys
 import types
 
@@ -8,6 +10,7 @@ from tinyloom.core.hooks import HookRunner
 from tinyloom.core.tools import ToolRegistry
 from tinyloom.core.agent import Agent
 from tinyloom.plugins import load_plugins_from_config
+from tinyloom.plugins.hook_scripts import activate as hook_scripts_activate, _serialize_ctx
 
 
 # ---------------------------------------------------------------------------
@@ -187,3 +190,122 @@ async def test_todo_unknown_action():
     result = await agent.tools.execute("todo", {"action": "delete"})
     assert "Error" in result
     assert "unknown action" in result
+
+
+# ---------------------------------------------------------------------------
+# Hook Scripts Plugin tests
+# ---------------------------------------------------------------------------
+
+def _make_script(tmp_path, name, body):
+    """Write an executable shell script and return its path."""
+    script = tmp_path / name
+    script.write_text(f"#!/bin/sh\n{body}\n")
+    script.chmod(script.stat().st_mode | stat.S_IEXEC)
+    return str(script)
+
+
+def _make_agent_with_hook_scripts(hook_scripts):
+    from unittest.mock import MagicMock
+    provider = MagicMock()
+    config = Config(hook_scripts=hook_scripts)
+    registry = ToolRegistry()
+    hooks = HookRunner()
+    return Agent(config=config, provider=provider, tools=registry, hooks=hooks)
+
+
+def test_hook_scripts_activate_registers_hooks():
+    agent = _make_agent_with_hook_scripts({
+        "tool_call": [{"command": "echo ok"}],
+        "message:user": [{"command": "echo hi"}],
+    })
+    hook_scripts_activate(agent)
+    assert len(agent.hooks._hooks.get("tool_call", [])) == 1
+    assert len(agent.hooks._hooks.get("message:user", [])) == 1
+
+
+def test_hook_scripts_activate_skips_empty_command():
+    agent = _make_agent_with_hook_scripts({
+        "tool_call": [{"command": ""}],
+    })
+    hook_scripts_activate(agent)
+    assert len(agent.hooks._hooks.get("tool_call", [])) == 0
+
+
+def test_hook_scripts_activate_no_scripts():
+    agent = _make_agent_with_hook_scripts({})
+    hook_scripts_activate(agent)
+    assert len(agent.hooks._hooks) == 0
+
+
+def test_hook_scripts_exit_0_passes(tmp_path):
+    script = _make_script(tmp_path, "pass.sh", "exit 0")
+    agent = _make_agent_with_hook_scripts({
+        "tool_call": [{"command": script}],
+    })
+    hook_scripts_activate(agent)
+    ctx = {"type": "tool_call", "tool_name": "bash"}
+    agent.hooks._hooks["tool_call"][0](ctx)
+    assert ctx.get("skip") is not True
+
+
+def test_hook_scripts_exit_1_logs_error(tmp_path, capsys):
+    script = _make_script(tmp_path, "err.sh", 'echo "bad thing" >&2\nexit 1')
+    agent = _make_agent_with_hook_scripts({
+        "tool_call": [{"command": script}],
+    })
+    hook_scripts_activate(agent)
+    ctx = {"type": "tool_call", "tool_name": "bash"}
+    agent.hooks._hooks["tool_call"][0](ctx)
+    captured = capsys.readouterr()
+    assert "Hook script error" in captured.err
+    assert ctx.get("skip") is not True
+
+
+def test_hook_scripts_exit_2_sets_skip_and_reason(tmp_path):
+    script = _make_script(tmp_path, "deny.sh", 'echo "dangerous tool"\nexit 2')
+    agent = _make_agent_with_hook_scripts({
+        "tool_call": [{"command": script}],
+    })
+    hook_scripts_activate(agent)
+    ctx = {"type": "tool_call", "tool_name": "bash"}
+    agent.hooks._hooks["tool_call"][0](ctx)
+    assert ctx["skip"] is True
+    assert ctx["reason"] == "dangerous tool"
+
+
+def test_hook_scripts_receives_ctx_as_json(tmp_path):
+    # Script that writes stdin to a file so we can verify what was passed
+    output_file = tmp_path / "received.json"
+    script = _make_script(
+        tmp_path, "capture.sh",
+        f'cat > {output_file}\nexit 0'
+    )
+    agent = _make_agent_with_hook_scripts({
+        "tool_call": [{"command": script}],
+    })
+    hook_scripts_activate(agent)
+    ctx = {"type": "tool_call", "tool_name": "bash", "extra": 42}
+    agent.hooks._hooks["tool_call"][0](ctx)
+    import json
+    received = json.loads(output_file.read_text())
+    assert received["type"] == "tool_call"
+    assert received["tool_name"] == "bash"
+    assert received["extra"] == 42
+
+
+def test_serialize_ctx_handles_non_serializable():
+    ctx = {"key": "value", "obj": object()}
+    result = _serialize_ctx(ctx)
+    import json
+    parsed = json.loads(result)
+    assert parsed["key"] == "value"
+    assert isinstance(parsed["obj"], str)
+
+
+def test_hook_scripts_string_command_format():
+    """hook_scripts can accept plain strings instead of dicts."""
+    agent = _make_agent_with_hook_scripts({
+        "tool_call": ["echo ok"],
+    })
+    hook_scripts_activate(agent)
+    assert len(agent.hooks._hooks.get("tool_call", [])) == 1

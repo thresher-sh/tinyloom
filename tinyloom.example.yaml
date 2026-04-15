@@ -24,4 +24,12 @@ compaction:
 #   - tinyloom.plugins.todo
 #   - tinyloom.plugins.mcp
 
+# hook_scripts:
+#   tool_call:
+#     - command: "./hooks/approve-tool.sh"
+#     - command: "python hooks/filter.py"
+#   message:user:
+#     - command: "./hooks/input-filter.sh"
+# Exit codes: 0=pass, 1=error(logged), 2=deny(sets skip+reason from stdout)
+
 max_turns: 200

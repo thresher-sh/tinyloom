@@ -32,6 +32,7 @@ class Config:
     compaction: CompactionConfig = field(default_factory=CompactionConfig)
     plugins: list[str] = field(default_factory=list)
     hooks: dict[str, list[str]] = field(default_factory=dict)
+    hook_scripts: dict[str, list[dict[str, str]]] = field(default_factory=dict)
     max_turns: int = 200
 
 
@@ -49,7 +50,7 @@ def load_config(path: str | Path | None = None) -> Config:
             if hasattr(cfg.compaction, k):
                 setattr(cfg.compaction, k, v)
 
-    for k in ("system_prompt", "max_turns", "plugins", "hooks"):
+    for k in ("system_prompt", "max_turns", "plugins", "hooks", "hook_scripts"):
         if k in raw:
             setattr(cfg, k, raw[k])
 
