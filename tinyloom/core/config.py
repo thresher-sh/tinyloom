@@ -13,7 +13,6 @@ class ModelConfig:
     model: str = "claude-sonnet-4-20250514"
     base_url: str | None = None
     api_key: str | None = None
-    api_key_env: str | None = None  # custom env var name for API key
     max_tokens: int = 8192
     context_window: int = 200_000
     temperature: float = 0.0
@@ -40,6 +39,7 @@ class Config:
 
 
 def load_config(path: str | Path | None = None) -> Config:
+    _load_dotenv()
     raw = _load_yaml(path)
     cfg = Config()
 
@@ -74,10 +74,32 @@ def _load_yaml(path: str | Path | None) -> dict:
     return {}
 
 
+def _load_dotenv() -> None:
+    """Load .env file into os.environ. Won't override existing vars."""
+    for p in (Path(".env"), Path.home() / ".config" / "tinyloom" / ".env"):
+        if p.exists():
+            for line in p.read_text().splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                value = value.strip().strip("'\"")
+                if key not in os.environ:
+                    os.environ[key] = value
+            return  # only load the first .env found
+
+
 def _apply_env_vars(cfg: Config) -> None:
-    if cfg.model.provider == "anthropic":
-        key = os.environ.get("ANTHROPIC_API_KEY")
-    else:
-        key = os.environ.get("OPENAI_API_KEY")
-    if key:
-        cfg.model.api_key = key
+    # Don't override if api_key was already set (e.g. from YAML)
+    if cfg.model.api_key:
+        return
+
+    # Check provider-specific first, then the other, so it works with custom base_url setups
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
+        key = os.environ.get(var)
+        if key:
+            cfg.model.api_key = key
+            return

@@ -142,3 +142,19 @@ model:
         cfg = load_config()
         assert cfg.compaction.model == "gpt-4o-mini"
         assert cfg.compaction.provider is None
+
+    def test_api_key_from_yaml_not_overridden(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "env-key")
+        yaml_content = "model:\n  api_key: yaml-key\n"
+        (tmp_path / "tinyloom.yaml").write_text(yaml_content)
+        cfg = load_config()
+        assert cfg.model.api_key == "yaml-key"
+
+    def test_api_key_falls_through_to_other_provider(self, tmp_path, monkeypatch):
+        """When using anthropic provider with custom base_url, OPENAI_API_KEY still works."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-fallback")
+        cfg = load_config()
+        assert cfg.model.api_key == "sk-openai-fallback"
