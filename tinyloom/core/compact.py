@@ -76,7 +76,6 @@ def _get_summary_provider(
         return default_provider
 
     from copy import copy
-    from tinyloom.core.config import ModelConfig
     from tinyloom.providers import create_provider
 
     mc = copy(config.model)

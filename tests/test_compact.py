@@ -120,7 +120,7 @@ def test_get_summary_provider_creates_new_when_model_set():
     )
     with patch("tinyloom.providers.create_provider") as mock_create:
         mock_create.return_value = _make_provider()
-        result = _get_summary_provider(default, config)
+        _get_summary_provider(default, config)
         mock_create.assert_called_once()
         mc = mock_create.call_args[0][0]
         assert mc.model == "claude-haiku-4-5-20251001"
@@ -135,7 +135,7 @@ def test_get_summary_provider_creates_new_when_provider_set():
     )
     with patch("tinyloom.providers.create_provider") as mock_create:
         mock_create.return_value = _make_provider()
-        result = _get_summary_provider(default, config)
+        _get_summary_provider(default, config)
         mock_create.assert_called_once()
         mc = mock_create.call_args[0][0]
         assert mc.provider == "openai"
@@ -153,7 +153,7 @@ def test_get_summary_provider_creates_new_with_both_overrides():
     )
     with patch("tinyloom.providers.create_provider") as mock_create:
         mock_create.return_value = _make_provider()
-        result = _get_summary_provider(default, config)
+        _get_summary_provider(default, config)
         mock_create.assert_called_once()
         mc = mock_create.call_args[0][0]
         assert mc.model == "gpt-4o-mini"

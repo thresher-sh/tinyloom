@@ -4,7 +4,7 @@ A tiny, SDK-first coding agent harness in Python.
 
 ## Why this exists
 
-We needed an extremely tiny harness for [thresher](https://github.com/thresher-sh/thresher) and many harnesses just bring extra bloat we don't need. The harness bit is actually easy to implement -- it's all the extra bells and whistles that take a lot.
+We needed an extremely tiny coding agent harness for [thresher](https://github.com/thresher-sh/thresher) and many harnesses just bring extra bloat we don't need. The harness bit is actually easy to implement -- it's all the extra bells and whistles that take a lot.
 
 If you are looking for a bigger client, take a look at one of these:
 
