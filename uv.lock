@@ -1296,6 +1296,7 @@ source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "openai" },
+    { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "textual" },
     { name = "tiktoken" },
@@ -1318,6 +1319,7 @@ requires-dist = [
     { name = "openai", specifier = ">=1.50" },
     { name = "pytest", marker = "extra == 'dev'" },
     { name = "pytest-asyncio", marker = "extra == 'dev'" },
+    { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", marker = "extra == 'dev'" },
     { name = "textual", specifier = ">=1.0" },

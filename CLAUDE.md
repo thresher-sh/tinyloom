@@ -157,3 +157,10 @@ Use the `uv` ecosystem tools.
 - `uv run python`
 
 Do not use pip or python directly.
+
+## Code Style hints
+
+- 200 column soft limit on a line
+- Use ternary style over if else blocks
+- Only 1 line space between classes and functions instead of 2
+- Keep code tight

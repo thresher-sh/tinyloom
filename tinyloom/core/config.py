@@ -1,11 +1,8 @@
 from __future__ import annotations
-
-import os
+import os, yaml
 from dataclasses import dataclass, field
 from pathlib import Path
-
-import yaml
-
+from dotenv import load_dotenv
 
 @dataclass
 class ModelConfig:
@@ -18,7 +15,6 @@ class ModelConfig:
     temperature: float = 0.0
     sync_http: bool = False
 
-
 @dataclass
 class CompactionConfig:
     enabled: bool = True
@@ -26,7 +22,6 @@ class CompactionConfig:
     strategy: str = "summarize"
     model: str | None = None       # None = use main model
     provider: str | None = None    # None = use main provider
-
 
 @dataclass
 class Config:
@@ -39,28 +34,22 @@ class Config:
     max_turns: int = 200
 
     def get_system_prompt(self, tool_names: list[str]) -> str:
-        """Return system prompt with available tools appended."""
-        base = self.system_prompt
-        if tool_names:
-            tools_list = ", ".join(sorted(tool_names))
-            base = f"{base}\n\nAvailable tools: {tools_list}"
-        return base
+        if not tool_names:
+            return self.system_prompt
+        return f"{self.system_prompt}\n\nAvailable tools: {', '.join(sorted(tool_names))}"
 
+def _apply(target, data: dict):
+    for k, v in data.items():
+        if hasattr(target, k):
+            setattr(target, k, v)
 
 def load_config(path: str | Path | None = None) -> Config:
-    _load_dotenv()
+    load_dotenv(Path(".env"), override=False)
     raw = _load_yaml(path)
     cfg = Config()
 
-    if "model" in raw:
-        for k, v in raw["model"].items():
-            if hasattr(cfg.model, k):
-                setattr(cfg.model, k, v)
-
-    if "compaction" in raw:
-        for k, v in raw["compaction"].items():
-            if hasattr(cfg.compaction, k):
-                setattr(cfg.compaction, k, v)
+    if "model" in raw: _apply(cfg.model, raw["model"])
+    if "compaction" in raw: _apply(cfg.compaction, raw["compaction"])
 
     for k in ("system_prompt", "max_turns", "plugins", "hooks", "hook_scripts"):
         if k in raw:
@@ -69,46 +58,18 @@ def load_config(path: str | Path | None = None) -> Config:
     _apply_env_vars(cfg)
     return cfg
 
-
 def _load_yaml(path: str | Path | None) -> dict:
-    candidates = []
+    candidates = [Path("tinyloom.yaml"), Path.home() / ".config" / "tinyloom" / "tinyloom.yaml"]
     if path:
-        candidates.append(Path(path))
-    candidates.append(Path("tinyloom.yaml"))
-    candidates.append(Path.home() / ".config" / "tinyloom" / "tinyloom.yaml")
-
+        candidates.insert(0, Path(path))
     for p in candidates:
         if p.exists():
             return yaml.safe_load(p.read_text()) or {}
     return {}
 
-
-def _load_dotenv() -> None:
-    """Load .env file into os.environ. Won't override existing vars."""
-    for p in (Path(".env"), Path.home() / ".config" / "tinyloom" / ".env"):
-        if p.exists():
-            for line in p.read_text().splitlines():
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if "=" not in line:
-                    continue
-                key, _, value = line.partition("=")
-                key = key.strip()
-                value = value.strip().strip("'\"")
-                if key not in os.environ:
-                    os.environ[key] = value
-            return  # only load the first .env found
-
-
 def _apply_env_vars(cfg: Config) -> None:
-    # Don't override if api_key was already set (e.g. from YAML)
-    if cfg.model.api_key:
-        return
-
-    # Check provider-specific first, then the other, so it works with custom base_url setups
+    if cfg.model.api_key: return
     for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY"):
-        key = os.environ.get(var)
-        if key:
+        if key := os.environ.get(var):
             cfg.model.api_key = key
             return

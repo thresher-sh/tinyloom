@@ -1,13 +1,8 @@
 from __future__ import annotations
-
-import importlib
-import inspect
-import sys
+import importlib, inspect, sys
 from typing import Any, Callable
 
-
 HookFn = Callable[..., Any]
-
 
 class HookRunner:
     def __init__(self):

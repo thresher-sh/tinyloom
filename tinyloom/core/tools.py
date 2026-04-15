@@ -1,16 +1,11 @@
 from __future__ import annotations
-
-import inspect
-import subprocess
-import shutil
+import inspect, subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
-
 from tinyloom.core.types import ToolDef  # re-export for convenience
 
 __all__ = ["Tool", "ToolRegistry", "tool", "ToolDef", "get_builtin_tools"]
-
 
 @dataclass
 class Tool:
@@ -20,22 +15,16 @@ class Tool:
     function: Callable[[dict], Any]
 
     def to_def(self) -> ToolDef:
-        return ToolDef(
-            name=self.name,
-            description=self.description,
-            input_schema=self.input_schema,
-        )
-
+        return ToolDef(name=self.name, description=self.description, input_schema=self.input_schema)
 
 def tool(name: str, description: str, input_schema: dict):
     def decorator(fn: Callable[[dict], str]) -> Tool:
         return Tool(name=name, description=description, input_schema=input_schema, function=fn)
     return decorator
 
-
 class ToolRegistry:
-    def __init__(self):
-        self._tools: dict[str, Tool] = {}
+    def __init__(self, tools: list[Tool] | None = None):
+        self._tools: dict[str, Tool] = {t.name: t for t in tools} if tools else {}
 
     def register(self, t: Tool):
         self._tools[t.name] = t
@@ -58,11 +47,6 @@ class ToolRegistry:
         except Exception as e:
             return f"Error: {type(e).__name__}: {e}"
 
-
-# ---------------------------------------------------------------------------
-# Built-in tools
-# ---------------------------------------------------------------------------
-
 @tool(
     "read",
     "Read file contents. Adds line numbers for files longer than 50 lines.",
@@ -81,10 +65,8 @@ def _read_tool(input_data: dict) -> str:
     text = path.read_text(errors="replace")
     lines = text.splitlines(keepends=True)
     if len(lines) > 50:
-        numbered = "".join(f"{i + 1}\t{line}" for i, line in enumerate(lines))
-        return numbered
+        return "".join(f"{i + 1}\t{line}" for i, line in enumerate(lines))
     return text
-
 
 @tool(
     "write",
@@ -103,7 +85,6 @@ def _write_tool(input_data: dict) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(input_data["content"])
     return f"Written: {path}"
-
 
 @tool(
     "edit",
@@ -124,7 +105,6 @@ def _edit_tool(input_data: dict) -> str:
     old_str = input_data["old_str"]
     new_str = input_data["new_str"]
 
-    # Create new file when old_str is empty and file doesn't exist
     if old_str == "" and not path.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(new_str)
@@ -143,35 +123,6 @@ def _edit_tool(input_data: dict) -> str:
     path.write_text(text.replace(old_str, new_str, 1))
     return f"Edited: {path}"
 
-
-@tool(
-    "grep",
-    "Search for a pattern in files using ripgrep (rg) with grep fallback. Returns matching lines with line numbers.",
-    {
-        "type": "object",
-        "properties": {
-            "pattern": {"type": "string", "description": "Regex pattern to search for"},
-            "path": {"type": "string", "description": "Directory or file to search in"},
-        },
-        "required": ["pattern"],
-    },
-)
-def _grep_tool(input_data: dict) -> str:
-    pattern = input_data["pattern"]
-    search_path = input_data.get("path", ".")
-
-    if shutil.which("rg"):
-        cmd = ["rg", "-n", pattern, search_path]
-    else:
-        cmd = ["grep", "-rn", pattern, search_path]
-
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    output = proc.stdout.strip()
-    if not output:
-        return "No matches found."
-    return output
-
-
 @tool(
     "bash",
     "Run a shell command. Returns stdout and stderr combined. Supports optional timeout in seconds.",
@@ -188,22 +139,12 @@ def _bash_tool(input_data: dict) -> str:
     cmd = input_data["cmd"]
     timeout = input_data.get("timeout", 120)
     try:
-        proc = subprocess.run(
-            cmd,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
-        output = proc.stdout
-        if proc.stderr:
-            output += proc.stderr
-        if proc.returncode != 0:
-            output += f"\n[exit code: {proc.returncode}]"
+        proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=timeout)
+        output = proc.stdout + (proc.stderr or "")
+        if proc.returncode != 0: output += f"\n[exit code: {proc.returncode}]"
         return output.strip()
     except subprocess.TimeoutExpired:
         return f"Error: Timeout after {timeout}s"
 
-
 def get_builtin_tools() -> list[Tool]:
-    return [_read_tool, _write_tool, _edit_tool, _grep_tool, _bash_tool]
+    return [_read_tool, _write_tool, _edit_tool, _bash_tool]

@@ -81,25 +81,6 @@ class TestAnthropicFormatMessages:
         assert result == [{"role": "assistant", "content": "just text"}]
 
 
-class TestAnthropicFormatTools:
-    def test_format_tools(self):
-        p = _anthropic_provider()
-        schema = {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}
-        td = ToolDef(name="bash", description="Run a command", input_schema=schema)
-        result = p._format_tools([td])
-        assert result == [
-            {
-                "name": "bash",
-                "description": "Run a command",
-                "input_schema": schema,
-            }
-        ]
-
-
-# ---------------------------------------------------------------------------
-# OpenAIProvider formatting tests
-# ---------------------------------------------------------------------------
-
 class TestOpenAIFormatMessages:
     def test_user_message(self):
         p = _openai_provider()
@@ -144,19 +125,3 @@ class TestOpenAIFormatMessages:
         assert result == [{"role": "assistant", "content": "done"}]
 
 
-class TestOpenAIFormatTools:
-    def test_format_tools(self):
-        p = _openai_provider()
-        schema = {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]}
-        td = ToolDef(name="bash", description="Run a command", input_schema=schema)
-        result = p._format_tools([td])
-        assert result == [
-            {
-                "type": "function",
-                "function": {
-                    "name": "bash",
-                    "description": "Run a command",
-                    "parameters": schema,
-                },
-            }
-        ]

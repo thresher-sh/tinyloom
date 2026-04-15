@@ -223,26 +223,6 @@ class TestEditTool:
         assert "Error" in result or "same" in result.lower() or "identical" in result.lower()
 
 
-class TestGrepTool:
-    async def test_grep_finds_pattern(self, tmp_path):
-        f = tmp_path / "sample.txt"
-        f.write_text("hello world\ngoodbye world\nhello again\n")
-        reg = ToolRegistry()
-        for t in get_builtin_tools():
-            reg.register(t)
-        result = await reg.execute("grep", {"pattern": "hello", "path": str(tmp_path)})
-        assert "hello" in result
-
-    async def test_grep_no_matches(self, tmp_path):
-        f = tmp_path / "sample.txt"
-        f.write_text("nothing relevant here\n")
-        reg = ToolRegistry()
-        for t in get_builtin_tools():
-            reg.register(t)
-        result = await reg.execute("grep", {"pattern": "zzznomatch", "path": str(tmp_path)})
-        assert "No matches found" in result or result.strip() == ""
-
-
 class TestBashTool:
     async def test_bash_simple_command(self):
         reg = ToolRegistry()

@@ -1,39 +1,24 @@
 from __future__ import annotations
-
-import asyncio
-import logging
+import asyncio, logging
 from typing import AsyncIterator
-
 import anthropic
-
 from tinyloom.core.config import ModelConfig
 from tinyloom.core.types import Message, StreamEvent, ToolCall, ToolDef
+from tinyloom.providers.base import client_kwargs, drain_sync_queue
 
 log = logging.getLogger(__name__)
-
 
 class AnthropicProvider:
     def __init__(self, config: ModelConfig) -> None:
         self.config = config
-        kwargs: dict = {}
-        if config.api_key:
-            kwargs["api_key"] = config.api_key
-        if config.base_url:
-            kwargs["base_url"] = config.base_url
-        self.client = anthropic.AsyncAnthropic(**kwargs)
-        if config.sync_http:
-            self.sync_client = anthropic.Anthropic(**kwargs)
+        kw = client_kwargs(config)
+        self.client = anthropic.AsyncAnthropic(**kw)
+        if config.sync_http: self.sync_client = anthropic.Anthropic(**kw)
 
-    async def stream(
-        self,
-        messages: list[Message],
-        tools: list[ToolDef],
-        system: str = "",
-    ) -> AsyncIterator[StreamEvent]:
+    async def stream(self, messages: list[Message], tools: list[ToolDef], system: str = "") -> AsyncIterator[StreamEvent]:
         kwargs = self._build_kwargs(messages, system)
         kwargs["max_tokens"] = self.config.max_tokens
-        if tools:
-            kwargs["tools"] = self._format_tools(tools)
+        if tools: kwargs["tools"] = [{"name": t.name, "description": t.description, "input_schema": t.input_schema} for t in tools]
 
         try:
             final = None
@@ -46,7 +31,6 @@ class AnthropicProvider:
 
             assembled_text = ""
             tool_calls: list[ToolCall] = []
-
             for block in final.content:
                 if block.type == "text":
                     assembled_text += block.text
@@ -56,158 +40,62 @@ class AnthropicProvider:
                     log.debug("tool_call received: %s", block.name)
                     yield StreamEvent(type="tool_call", tool_call=tc)
 
-            done_msg = Message(
-                role="assistant",
-                content=assembled_text,
-                tool_calls=tool_calls,
-            )
-            yield StreamEvent(type="done", message=done_msg)
-
+            yield StreamEvent(type="done", message=Message(role="assistant", content=assembled_text, tool_calls=tool_calls))
         except anthropic.APIError as e:
             log.error("Anthropic API error: %s", e)
             yield StreamEvent(type="error", error=str(e))
 
     async def _iter_stream(self, kwargs: dict) -> AsyncIterator[tuple]:
-        """Yield (tag, value) pairs from either the async or sync client.
-
-        Tags: "text" for deltas, "final" for the completed message.
-        """
         if self.config.sync_http:
-            queue: asyncio.Queue = asyncio.Queue()
-            error: list[Exception] = []
-
-            def _run() -> None:
-                try:
-                    with self.sync_client.messages.stream(**kwargs) as stream:
-                        for text_delta in stream.text_stream:
-                            queue.put_nowait(("text", text_delta))
-                        queue.put_nowait(("final", stream.get_final_message()))
-                except Exception as e:
-                    error.append(e)
-                finally:
-                    queue.put_nowait(None)
-
-            task = asyncio.get_event_loop().run_in_executor(None, _run)
-            while True:
-                item = await queue.get()
-                if item is None:
-                    break
-                yield item
-            await task
-            if error:
-                raise error[0]
+            def _sync(q):
+                with self.sync_client.messages.stream(**kwargs) as s:
+                    for t in s.text_stream: q.put_nowait(("text", t))
+                    q.put_nowait(("final", s.get_final_message()))
+            async for item in drain_sync_queue(_sync): yield item
         else:
-            async with self.client.messages.stream(**kwargs) as stream:
-                async for text_delta in stream.text_stream:
-                    yield ("text", text_delta)
-                yield ("final", await stream.get_final_message())
+            async with self.client.messages.stream(**kwargs) as s:
+                async for t in s.text_stream: yield ("text", t)
+                yield ("final", await s.get_final_message())
 
-    async def chat(
-        self,
-        messages: list[Message],
-        system: str = "",
-        max_tokens: int = 8192,
-    ) -> Message:
+    async def chat(self, messages: list[Message], system: str = "", max_tokens: int = 8192) -> Message:
         kwargs = self._build_kwargs(messages, system)
         kwargs["max_tokens"] = max_tokens
-        if self.config.sync_http:
-            response = await asyncio.to_thread(
-                self.sync_client.messages.create, **kwargs
-            )
-        else:
-            response = await self.client.messages.create(**kwargs)
-        text = "".join(block.text for block in response.content if block.type == "text")
-        return Message(role="assistant", content=text)
+        response = await asyncio.to_thread(self.sync_client.messages.create, **kwargs) if self.config.sync_http else await self.client.messages.create(**kwargs)
+        return Message(role="assistant", content="".join(block.text for block in response.content if block.type == "text"))
 
-    async def count_tokens(
-        self,
-        messages: list[Message],
-        system: str = "",
-    ) -> int:
-        count_kwargs: dict = {
-            "model": self.config.model,
-            "messages": self._format_messages(messages),
-        }
-        if system:
-            count_kwargs["system"] = system
-        if self.config.sync_http:
-            result = await asyncio.to_thread(
-                self.sync_client.messages.count_tokens, **count_kwargs
-            )
-        else:
-            result = await self.client.messages.count_tokens(**count_kwargs)
+    async def count_tokens(self, messages: list[Message], system: str = "") -> int:
+        count_kwargs: dict = {"model": self.config.model, "messages": self._format_messages(messages)}
+        if system: count_kwargs["system"] = system
+        result = await asyncio.to_thread(self.sync_client.messages.count_tokens, **count_kwargs) if self.config.sync_http else await self.client.messages.count_tokens(**count_kwargs)
         return result.input_tokens
 
     def _build_kwargs(self, messages: list[Message], system: str) -> dict:
-        kwargs: dict = {
-            "model": self.config.model,
-            "messages": self._format_messages(messages),
-            "temperature": self.config.temperature,
-        }
-        if system:
-            kwargs["system"] = system
+        kwargs: dict = {"model": self.config.model, "messages": self._format_messages(messages), "temperature": self.config.temperature}
+        if system: kwargs["system"] = system
         return kwargs
 
     def _format_messages(self, messages: list[Message]) -> list[dict]:
-        """Translate Message list to Anthropic API format.
+        """Translate to Anthropic format. Merges consecutive same-role messages."""
+        def _as_list(content):
+            if isinstance(content, str): return [{"type": "text", "text": content}] if content else []
+            return content
 
-        Anthropic requires strictly alternating user/assistant roles.
-        tool_result messages become user messages with tool_result content blocks.
-        Consecutive same-role messages are merged.
-        """
         raw: list[dict] = []
-
         for msg in messages:
             if msg.role == "tool":
-                # tool result → user message with tool_result content block
-                block = {
-                    "type": "tool_result",
-                    "tool_use_id": msg.tool_call_id,
-                    "content": msg.content,
-                }
-                raw.append({"role": "user", "content": [block]})
-
+                raw.append({"role": "user", "content": [{"type": "tool_result", "tool_use_id": msg.tool_call_id, "content": msg.content}]})
             elif msg.role == "assistant" and msg.tool_calls:
-                content: list[dict] = []
-                if msg.content:
-                    content.append({"type": "text", "text": msg.content})
-                for tc in msg.tool_calls:
-                    content.append({
-                        "type": "tool_use",
-                        "id": tc.id,
-                        "name": tc.name,
-                        "input": tc.input,
-                    })
+                content = ([{"type": "text", "text": msg.content}] if msg.content else []) + [{"type": "tool_use", "id": tc.id, "name": tc.name, "input": tc.input} for tc in msg.tool_calls]
                 raw.append({"role": "assistant", "content": content})
-
             else:
                 raw.append({"role": msg.role, "content": msg.content})
 
-        # Merge consecutive same-role messages
         merged: list[dict] = []
         for entry in raw:
             if merged and merged[-1]["role"] == entry["role"]:
                 prev = merged[-1]
-                # Normalise both to list form before merging
-                if isinstance(prev["content"], str):
-                    prev["content"] = [{"type": "text", "text": prev["content"]}] if prev["content"] else []
-                if isinstance(entry["content"], str):
-                    entry_content: list = [{"type": "text", "text": entry["content"]}] if entry["content"] else []
-                else:
-                    entry_content = entry["content"]
-                prev["content"].extend(entry_content)
+                prev["content"] = _as_list(prev["content"])
+                prev["content"].extend(_as_list(entry["content"]))
             else:
-                # Make a shallow copy so we can mutate safely later
                 merged.append({"role": entry["role"], "content": entry["content"]})
-
         return merged
-
-    def _format_tools(self, tools: list[ToolDef]) -> list[dict]:
-        return [
-            {
-                "name": td.name,
-                "description": td.description,
-                "input_schema": td.input_schema,
-            }
-            for td in tools
-        ]

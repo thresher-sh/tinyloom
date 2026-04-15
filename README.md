@@ -50,7 +50,7 @@ See [docs/getting-started.md](docs/getting-started.md) for full setup instructio
 
 ## Features
 
-- **Built-in tools**: `read`, `write`, `edit` (str_replace), `grep` (ripgrep), `bash`
+- **Built-in tools**: `read`, `write`, `edit` (str_replace), `bash`
 - **Providers**: Anthropic and OpenAI-compatible APIs (vLLM, Ollama, Together, Groq, LM Studio, Azure)
 - **Compaction**: automatic context summarization when approaching the context window limit
 - **Hooks**: react to any agent event (tool calls, messages, errors) with sync or async functions
@@ -112,14 +112,15 @@ tinyloom is intentionally small. Extend it instead:
 
 ## Size
 
-The whole thing is ~1,471 lines of Python as of 2026.04.15.
+The whole thing is ~1,110 lines of Python (excluding blank lines) as of 2026.04.15.
 
 | Area | Files | Lines |
 |------|-------|-------|
-| **core** (agent, tools, config, compaction, hooks, types) | 7 | 706 |
-| **cli** | 1 | 92 |
-| **tui** | 1 | 216 |
-| **plugins** (subagent, todo, mcp, hook_scripts) | 5 | 457 |
+| **core** (agent, tools, config, compaction, hooks, types) | 7 | 411 |
+| **cli** | 1 | 48 |
+| **tui** | 1 | 152 |
+| **providers** (anthropic, openai, base) | 4 | 220 |
+| **plugins** (subagent, todo, mcp, hook_scripts) | 5 | 263 |
 
 ## License
 
