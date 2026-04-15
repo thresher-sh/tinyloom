@@ -13,7 +13,6 @@ dependencies = [
     "pyyaml>=6.0",
     "textual>=1.0",
     "ripgrep>=0.1",
-    "tiktoken>=0.7",
 ]
 
 [project.optional-dependencies]
