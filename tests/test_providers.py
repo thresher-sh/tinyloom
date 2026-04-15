@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from tinyloom.core.config import ModelConfig
 from tinyloom.core.types import Message, ToolCall, ToolDef

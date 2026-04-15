@@ -62,7 +62,7 @@ async def test_hook_exception_logged_not_raised(capsys):
 
     runner.on("ev", bad_hook)
     # Should not raise
-    ctx = await runner.emit("ev", {})
+    await runner.emit("ev", {})
     captured = capsys.readouterr()
     assert "Hook error" in captured.err
     assert "boom" in captured.err

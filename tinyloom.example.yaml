@@ -1,0 +1,27 @@
+# tinyloom configuration
+# All fields are optional - defaults work out of the box.
+
+model:
+  provider: anthropic
+  model: claude-sonnet-4-20250514
+  # base_url: https://my-proxy.com/v1
+  max_tokens: 8192
+  context_window: 200000
+  temperature: 0.0
+
+system_prompt: |
+  You are a skilled coding assistant. You have access to tools for
+  reading, writing, and editing files, searching code, and running
+  shell commands. Be concise. When editing files, always read them
+  first to see the exact content.
+
+compaction:
+  enabled: true
+  threshold: 0.8
+  strategy: summarize
+
+# plugins:
+#   - tinyloom.plugins.todo
+#   - tinyloom.plugins.mcp
+
+max_turns: 200

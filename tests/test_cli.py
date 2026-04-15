@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 
-import pytest
 
 from tinyloom.cli import build_parser, detect_mode
 

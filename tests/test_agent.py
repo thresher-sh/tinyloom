@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from tinyloom.core.agent import Agent, AgentState
+from tinyloom.core.agent import Agent
 from tinyloom.core.config import Config, CompactionConfig
 from tinyloom.core.hooks import HookRunner
 from tinyloom.core.tools import Tool, ToolRegistry

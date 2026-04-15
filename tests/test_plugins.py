@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sys
 import types
-import pytest
 
 from tinyloom.core.config import Config
 from tinyloom.core.hooks import HookRunner

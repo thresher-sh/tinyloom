@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import AsyncIterator, TYPE_CHECKING
 
-from tinyloom.core.types import Message, ToolCall, AgentEvent, StreamEvent
+from tinyloom.core.types import Message, ToolCall, AgentEvent
 from tinyloom.core.config import Config
 from tinyloom.core.hooks import HookRunner
-from tinyloom.core.tools import ToolRegistry, get_builtin_tools
+from tinyloom.core.tools import ToolRegistry
 from tinyloom.core.compact import maybe_compact
 
 if TYPE_CHECKING:

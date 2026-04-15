@@ -25,7 +25,7 @@ async def _connect_and_register(agent: Agent, name: str, config: dict):
         from mcp.client.stdio import stdio_client
     except ImportError:
         print(
-            f"MCP plugin: 'mcp' package not installed. Install with: uv add 'tinyloom[mcp]'",
+            "MCP plugin: 'mcp' package not installed. Install with: uv add 'tinyloom[mcp]'",
             file=sys.stderr,
         )
         return
