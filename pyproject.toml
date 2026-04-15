@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tinyloom"
+version = "0.1.0"
+description = "A tiny, SDK-first coding agent harness"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.40",
+    "openai>=1.50",
+    "pyyaml>=6.0",
+    "textual>=1.0",
+    "ripgrep>=0.1",
+    "tiktoken>=0.7",
+]
+
+[project.optional-dependencies]
+mcp = ["mcp>=1.0,<2"]
+dev = ["pytest", "pytest-asyncio", "ruff"]
+
+[project.scripts]
+tinyloom = "tinyloom.cli:main"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
