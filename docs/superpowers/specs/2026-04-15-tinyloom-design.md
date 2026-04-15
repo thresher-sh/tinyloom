@@ -64,7 +64,7 @@ tinyloom/
 class Message:
     role: str                          # "user" | "assistant" | "tool_result"
     content: str = ""
-    tool_calls: list[ToolCall]         # populated for assistant messages with tool use
+    tool_calls: list[ToolCall] = field(default_factory=list)
     tool_call_id: str = ""             # populated for tool_result messages
     name: str = ""                     # tool name for tool_result messages
 
@@ -96,7 +96,9 @@ class AgentEvent:
     error: str = ""
 
     def to_dict(self) -> dict:
-        """Serialize for JSON stream output. Drops empty fields."""
+        """Serialize for JSON stream output.
+        Drops fields whose value is None, empty string, or empty list.
+        The 'type' field is always included."""
 ```
 
 ### Two event types, two audiences
@@ -113,7 +115,7 @@ Hooks subscribe to `AgentEvent` types and `Message` roles. One event system for 
 ```python
 class HookRunner:
     def on(self, event: str, fn: Callable): ...
-    async def emit(self, event: str, **kwargs): ...
+    async def emit(self, event: str, ctx: dict) -> dict: ...
 ```
 
 ### Subscribing
@@ -137,6 +139,26 @@ hooks.on("message:tool_result", my_audit_trail)
 - Hooks can be sync or async (auto-detected).
 - Hook exceptions are logged to stderr, not raised.
 - Hooks can be registered via config (dotted import paths) or programmatically.
+
+### Mutation and cancellation
+
+Hooks receive a mutable `ctx` dict containing the event/message data. Hooks can:
+
+- **Read** any field for logging/tracking.
+- **Mutate** fields to transform data (e.g., a `message:user` hook could rewrite content).
+- **Cancel** by setting `ctx["skip"] = True`. The agent loop checks this after hooks run:
+  - For `tool_call`: skips execution of that tool, returns an error string to the LLM.
+  - For `message:*`: skips appending the message.
+  - For other events: skips yielding the event to consumers.
+
+Example approval gate:
+```python
+async def approve_writes(ctx):
+    if ctx["tool_name"] in ("edit", "write", "bash"):
+        answer = input(f"Allow {ctx['tool_name']}? [y/N] ")
+        if answer.lower() != "y":
+            ctx["skip"] = True
+```
 
 ---
 
@@ -165,7 +187,18 @@ Two methods. Each provider (`anthropic.py`, `openai.py`) implements this by:
 1. Translating `Message` list to SDK-native format
 2. Calling the SDK's streaming API
 3. Yielding `StreamEvent`s
-4. Using SDK/API token counting endpoint for accurate counts
+4. Token counting:
+   - **Anthropic**: uses the `/v1/messages/count_tokens` API endpoint (free, accurate)
+   - **OpenAI**: uses `tiktoken` library locally (the standard approach; OpenAI has no server-side counting endpoint)
+
+### Error handling
+
+Provider API failures (HTTP 429, 500, network errors, auth failures) are handled as follows:
+
+- The official SDKs handle transient retries (rate limits, server errors) automatically.
+- Unrecoverable errors (auth failure, invalid model, malformed request) cause the provider to yield `StreamEvent(type="error", error="...")`.
+- The agent loop catches error events, emits `AgentEvent(type="error")` through hooks, and stops the current run.
+- The agent does not retry at the loop level -- SDK retry logic is sufficient.
 
 ### Provider detection
 
@@ -191,10 +224,13 @@ class Agent:
     ): ...
 
     async def run(self, prompt: str) -> AsyncIterator[AgentEvent]:
-        """Headless: one prompt, run to completion."""
+        """Single-shot: one prompt, run to completion.
+        Creates a fresh conversation (clears any existing state)."""
 
     async def step(self, user_input: str) -> AsyncIterator[AgentEvent]:
-        """Interactive: one user message, run until response."""
+        """Interactive: one user message, run until response.
+        Accumulates conversation state across calls.
+        Resets turn counter per interaction (max_turns applies per step, not total)."""
 ```
 
 ### The loop
@@ -240,9 +276,9 @@ All tools, the `Tool` dataclass, `ToolRegistry`, and `@tool` decorator live in o
 | `read` | `path` | Read file, return line-numbered output |
 | `write` | `path`, `content` | Create/overwrite file, create parent dirs |
 | `edit` | `path`, `old_str`, `new_str` | str_replace, must match exactly once. Diff support planned for future. |
-| `grep` | `pattern`, `path?`, `flags?` | Uses `ripgrep` Python package, falls back to system grep |
+| `grep` | `pattern`, `path?`, `flags?` | Shells out to `rg` binary (installed via `ripgrep` PyPI package), falls back to system `grep -rn` if `rg` not found |
 | `bash` | `command`, `timeout?` | Shell execution, captures stdout+stderr+exit code, 120s default timeout |
-| `exec` | `task`, `model?`, `system_prompt?` | Spawns sub-agent in-process. One level deep only -- sub-agent gets all tools except `exec`. |
+| `exec` | `task`, `model?`, `system_prompt?` | Spawns sub-agent in-process. One level deep only -- see sub-agent details below. |
 
 ### Tool contract
 
@@ -255,6 +291,16 @@ def read_tool(input: dict) -> str:
 `ToolRegistry.execute()` catches exceptions and returns error strings -- never crashes the agent loop.
 
 `exec` is async (awaited by the agent loop). Sync tools are wrapped automatically.
+
+### Sub-agent (`exec`) details
+
+- **Model**: uses parent's model by default. Overridable via `model` param.
+- **System prompt**: uses parent's system prompt by default. Overridable via `system_prompt` param.
+- **Tools**: gets all built-in tools except `exec` (prevents recursion).
+- **Hooks**: gets a fresh empty `HookRunner`. Parent hooks do not propagate.
+- **Plugins**: none loaded. Sub-agents are lightweight and focused.
+- **Context window**: uses parent's `context_window` config. No separate budget.
+- **Output**: returns the full concatenated text from all `text_delta` events. No summarization.
 
 ---
 
@@ -278,11 +324,11 @@ class CompactionConfig:
 
 @dataclass
 class Config:
-    model: ModelConfig
+    model: ModelConfig = field(default_factory=ModelConfig)
     system_prompt: str = "You are a skilled coding assistant..."
-    compaction: CompactionConfig
-    plugins: list[str] = []            # dotted paths or entry_point names
-    hooks: dict[str, list[str]] = {}   # event -> [dotted.paths]
+    compaction: CompactionConfig = field(default_factory=CompactionConfig)
+    plugins: list[str] = field(default_factory=list)
+    hooks: dict[str, list[str]] = field(default_factory=dict)
     max_turns: int = 200
 ```
 
@@ -309,8 +355,13 @@ Core feature, on by default, configurable to disable.
 
 ### Strategies
 
-- **`summarize`** (default): ask the LLM to summarize the conversation. Replace everything except the last ~4 messages with the summary. Summary prompt captures: what was accomplished, what's in progress, key decisions, errors resolved, next steps.
-- **`truncate`**: drop oldest messages, keep last ~10, prepend a truncation marker.
+- **`summarize`** (default): ask the LLM to summarize the conversation. Replace everything except the last 4 messages with the summary. Summary prompt captures: what was accomplished, what's in progress, key decisions, errors resolved, next steps. The summary request includes a `max_tokens` cap of 2048 to keep the result bounded. Target post-compaction size: ~50% of context window.
+- **`truncate`**: drop oldest messages, keep last 10, prepend a truncation marker.
+
+### Edge cases
+
+- If compaction fires but post-compaction size still exceeds the threshold (e.g., the last 4 messages alone are huge), log a warning and proceed. The provider's SDK will handle the overflow error if the next call exceeds limits.
+- If the summary LLM call itself fails, fall back to truncation strategy.
 
 ### Details
 
@@ -427,6 +478,7 @@ dependencies = [
     "pyyaml>=6.0",
     "textual>=1.0",
     "ripgrep>=0.1",
+    "tiktoken>=0.7",
 ]
 
 [project.optional-dependencies]
@@ -436,10 +488,11 @@ dev = ["pytest", "pytest-asyncio", "ruff"]
 
 ### Why each
 
-- `anthropic` / `openai`: official SDKs handle streaming, token counting, retries, format quirks
+- `anthropic` / `openai`: official SDKs handle streaming, retries, format quirks
 - `pyyaml`: config loading
 - `textual`: TUI (bundles rich)
-- `ripgrep`: grep tool (system grep as fallback)
+- `ripgrep`: installs the `rg` binary into the environment (not a Python library -- grep tool shells out to it via subprocess)
+- `tiktoken`: local token counting for OpenAI models (OpenAI has no server-side counting endpoint)
 - `mcp`: optional, only for MCP plugin
 
 ### Transitive (not declared)
@@ -489,4 +542,4 @@ Headless mode emits one JSON object per line:
 7. **Compaction is core**: safety rail, on by default, configurable to disable.
 8. **MCP is a plugin**: opt-in, not everyone needs it.
 9. **Sub-agents one level deep**: simple, no recursion risk.
-10. **ripgrep Python package**: no dependency on system rg binary.
+10. **ripgrep PyPI package**: installs `rg` binary into the Python environment, ensuring availability without a system install.
