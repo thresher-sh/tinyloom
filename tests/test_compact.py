@@ -102,6 +102,17 @@ async def test_maybe_compact_uses_heuristic_when_count_tokens_fails():
     assert result is None
 
 
+@pytest.mark.asyncio
+async def test_maybe_compact_uses_heuristic_when_count_tokens_returns_none():
+    """Local models (e.g. LM Studio) may return None from count_tokens."""
+    provider = _make_provider()
+    provider.count_tokens = AsyncMock(return_value=None)
+    messages = [Message(role="user", content="a" * 796)]
+    result = await maybe_compact(provider, messages, _cfg(context_window=250, strategy="truncate"))
+    # heuristic: 796 / 4 = 199, threshold 0.8 * 250 = 200, 199 < 200 => no compaction
+    assert result is None
+
+
 # ---------------------------------------------------------------------------
 # Compaction model/provider config tests
 # ---------------------------------------------------------------------------

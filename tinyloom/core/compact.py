@@ -26,6 +26,7 @@ async def maybe_compact(
 ) -> list[Message] | None:
     try:
         current_tokens = await provider.count_tokens(messages)
+        if current_tokens is None: current_tokens = estimate_tokens_heuristic(messages)
     except Exception:
         current_tokens = estimate_tokens_heuristic(messages)
 

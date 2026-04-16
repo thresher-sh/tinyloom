@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import AsyncIterator
-from tinyloom.core.types import Message, ToolCall, AgentEvent
+from tinyloom.core.types import Message, ToolCall, AgentEvent, TokenUsage
 from tinyloom.core.config import Config
 from tinyloom.core.hooks import HookRunner
 from tinyloom.core.tools import ToolRegistry, get_builtin_tools
@@ -13,6 +13,7 @@ from tinyloom.providers.base import LLMProvider
 class AgentState:
     messages: list[Message] = field(default_factory=list)
     turn: int = 0
+    cumulative_usage: TokenUsage = field(default_factory=TokenUsage)
 
 class Agent:
     def __init__(
@@ -32,8 +33,9 @@ class Agent:
         """Single-shot: one prompt, run to completion. Clears existing state."""
         self.state = AgentState()
         await self._add_message(Message(role="user", content=prompt))
-        for gen in (self._emit("agent_start"), self._loop(), self._emit("agent_stop")):
-            async for evt in gen: yield evt
+        async for evt in self._emit("agent_start"): yield evt
+        async for evt in self._loop(): yield evt
+        async for evt in self._emit("agent_stop", cumulative_usage=self.state.cumulative_usage): yield evt
 
     async def step(self, user_input: str) -> AsyncIterator[AgentEvent]:
         """Interactive: one user message, run until response. Accumulates state."""
@@ -55,17 +57,18 @@ class Agent:
             assistant_msg = Message(role="assistant")
             tool_calls: list[ToolCall] = []
             tool_defs = self.tools.all_defs()
+            turn_usage: TokenUsage | None = None
 
             async for stream_evt in self.provider.stream(
                 messages=self.state.messages,
                 tools=tool_defs,
                 system=self.config.get_system_prompt([t.name for t in tool_defs]),
             ):
-                if stream_evt.type == "text":
-                    evt = AgentEvent(type="text_delta", text=stream_evt.text)
-                    ctx = {"type": "text_delta", "text": stream_evt.text}
-                    await self.hooks.emit("text_delta", ctx)
-                    if not ctx.get("skip"): yield evt
+                if stream_evt.type in ("reasoning", "text"):
+                    event_name = stream_evt.type if stream_evt.type == "reasoning" else "text_delta"
+                    ctx = {"type": event_name, "text": stream_evt.text}
+                    await self.hooks.emit(event_name, ctx)
+                    if not ctx.get("skip"): yield AgentEvent(type=event_name, text=stream_evt.text)
 
                 elif stream_evt.type == "tool_call":
                     tc = stream_evt.tool_call
@@ -80,6 +83,8 @@ class Agent:
 
                 elif stream_evt.type == "done":
                     assistant_msg = stream_evt.message
+                    turn_usage = stream_evt.usage
+                    if turn_usage is not None: self.state.cumulative_usage = self.state.cumulative_usage + turn_usage
 
                 elif stream_evt.type == "error":
                     evt = AgentEvent(type="error", error=stream_evt.error)
@@ -101,7 +106,7 @@ class Agent:
 
                 continue  # Go back to LLM with tool results
 
-            async for evt in self._emit("response_complete", message=assistant_msg): yield evt
+            async for evt in self._emit("response_complete", message=assistant_msg, usage=turn_usage, cumulative_usage=self.state.cumulative_usage): yield evt
             return
 
     async def _emit(self, event_type: str, **kw) -> AsyncIterator[AgentEvent]:

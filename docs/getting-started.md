@@ -121,6 +121,20 @@ model:
 
 Any OpenAI-compatible API works -- see [custom providers](custom-providers.md) for vLLM, Ollama, and others.
 
+## Thinking / reasoning
+
+Enable extended thinking for models that support it:
+
+```yaml
+model:
+  provider: anthropic
+  model: claude-sonnet-4-20250514
+  thinking: true
+  reasoning_effort: medium  # low, medium, or high
+```
+
+Works with Anthropic, OpenAI reasoning models (o3-mini, etc.), Fireworks, and OpenRouter. See [custom providers](custom-providers.md#thinking--reasoning) for provider-specific examples.
+
 ## Event types
 
 When consuming the SDK or reading JSONL output, these are the events you will see:

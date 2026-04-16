@@ -13,6 +13,8 @@ class ModelConfig:
     max_tokens: int = 8192
     context_window: int = 200_000
     temperature: float = 0.0
+    thinking: bool = False
+    reasoning_effort: str | None = None  # "low", "medium", "high"
     sync_http: bool = False
 
 @dataclass

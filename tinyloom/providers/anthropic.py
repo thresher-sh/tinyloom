@@ -3,10 +3,19 @@ import asyncio, logging
 from typing import AsyncIterator
 import anthropic
 from tinyloom.core.config import ModelConfig
-from tinyloom.core.types import Message, StreamEvent, ToolCall, ToolDef
+from tinyloom.core.types import Message, StreamEvent, ToolCall, ToolDef, TokenUsage
 from tinyloom.providers.base import client_kwargs, drain_sync_queue
 
 log = logging.getLogger(__name__)
+
+def _extract_anthropic_usage(usage) -> TokenUsage | None:
+    if usage is None: return None
+    return TokenUsage(
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        cache_read_tokens=getattr(usage, 'cache_read_input_tokens', 0) or 0,
+        cache_write_tokens=getattr(usage, 'cache_creation_input_tokens', 0) or 0,
+    )
 
 class AnthropicProvider:
     def __init__(self, config: ModelConfig) -> None:
@@ -26,21 +35,30 @@ class AnthropicProvider:
                 if tag == "text":
                     log.debug("text delta received")
                     yield StreamEvent(type="text", text=value)
+                elif tag == "thinking":
+                    yield StreamEvent(type="reasoning", text=value)
                 elif tag == "final":
                     final = value
 
             assembled_text = ""
+            reasoning_text = ""
+            reasoning_sig = ""
             tool_calls: list[ToolCall] = []
             for block in final.content:
                 if block.type == "text":
                     assembled_text += block.text
+                elif block.type == "thinking":
+                    reasoning_text += getattr(block, "thinking", "") or ""
+                    reasoning_sig = getattr(block, "signature", "") or ""
                 elif block.type == "tool_use":
                     tc = ToolCall(id=block.id, name=block.name, input=block.input)
                     tool_calls.append(tc)
                     log.debug("tool_call received: %s", block.name)
                     yield StreamEvent(type="tool_call", tool_call=tc)
 
-            yield StreamEvent(type="done", message=Message(role="assistant", content=assembled_text, tool_calls=tool_calls))
+            usage = _extract_anthropic_usage(final.usage if final is not None else None)
+            msg = Message(role="assistant", content=assembled_text, tool_calls=tool_calls, reasoning=reasoning_text or None, reasoning_signature=reasoning_sig or None)
+            yield StreamEvent(type="done", message=msg, usage=usage)
         except anthropic.APIError as e:
             log.error("Anthropic API error: %s", e)
             yield StreamEvent(type="error", error=str(e))
@@ -49,19 +67,27 @@ class AnthropicProvider:
         if self.config.sync_http:
             def _sync(q):
                 with self.sync_client.messages.stream(**kwargs) as s:
-                    for t in s.text_stream: q.put_nowait(("text", t))
+                    for event in s:
+                        if event.type == "content_block_delta":
+                            if event.delta.type == "text_delta": q.put_nowait(("text", event.delta.text))
+                            elif event.delta.type == "thinking_delta": q.put_nowait(("thinking", event.delta.thinking))
                     q.put_nowait(("final", s.get_final_message()))
             async for item in drain_sync_queue(_sync): yield item
         else:
             async with self.client.messages.stream(**kwargs) as s:
-                async for t in s.text_stream: yield ("text", t)
+                async for event in s:
+                    if event.type == "content_block_delta":
+                        if event.delta.type == "text_delta": yield ("text", event.delta.text)
+                        elif event.delta.type == "thinking_delta": yield ("thinking", event.delta.thinking)
                 yield ("final", await s.get_final_message())
 
     async def chat(self, messages: list[Message], system: str = "", max_tokens: int = 8192) -> Message:
         kwargs = self._build_kwargs(messages, system)
         kwargs["max_tokens"] = max_tokens
         response = await asyncio.to_thread(self.sync_client.messages.create, **kwargs) if self.config.sync_http else await self.client.messages.create(**kwargs)
-        return Message(role="assistant", content="".join(block.text for block in response.content if block.type == "text"))
+        reasoning = "".join(getattr(b, "thinking", "") or "" for b in response.content if b.type == "thinking") or None
+        sig = next((getattr(b, "signature", "") for b in response.content if b.type == "thinking" and getattr(b, "signature", "")), None)
+        return Message(role="assistant", content="".join(b.text for b in response.content if b.type == "text"), reasoning=reasoning, reasoning_signature=sig)
 
     async def count_tokens(self, messages: list[Message], system: str = "") -> int:
         count_kwargs: dict = {"model": self.config.model, "messages": self._format_messages(messages)}
@@ -70,8 +96,12 @@ class AnthropicProvider:
         return result.input_tokens
 
     def _build_kwargs(self, messages: list[Message], system: str) -> dict:
-        kwargs: dict = {"model": self.config.model, "messages": self._format_messages(messages), "temperature": self.config.temperature}
+        thinking_enabled = self.config.thinking or self.config.reasoning_effort is not None
+        kwargs: dict = {"model": self.config.model, "messages": self._format_messages(messages)}
+        if not thinking_enabled: kwargs["temperature"] = self.config.temperature
         if system: kwargs["system"] = system
+        if thinking_enabled: kwargs["thinking"] = {"type": "adaptive"}
+        if self.config.reasoning_effort: kwargs["output_config"] = {"effort": self.config.reasoning_effort}
         return kwargs
 
     def _format_messages(self, messages: list[Message]) -> list[dict]:
@@ -84,9 +114,11 @@ class AnthropicProvider:
         for msg in messages:
             if msg.role == "tool":
                 raw.append({"role": "user", "content": [{"type": "tool_result", "tool_use_id": msg.tool_call_id, "content": msg.content}]})
-            elif msg.role == "assistant" and msg.tool_calls:
-                content = ([{"type": "text", "text": msg.content}] if msg.content else []) + [{"type": "tool_use", "id": tc.id, "name": tc.name, "input": tc.input} for tc in msg.tool_calls]
-                raw.append({"role": "assistant", "content": content})
+            elif msg.role == "assistant" and (msg.tool_calls or msg.reasoning_signature):
+                thinking = [{"type": "thinking", "thinking": msg.reasoning or "", "signature": msg.reasoning_signature}] if msg.reasoning_signature else []
+                text = [{"type": "text", "text": msg.content}] if msg.content else []
+                tools = [{"type": "tool_use", "id": tc.id, "name": tc.name, "input": tc.input} for tc in msg.tool_calls]
+                raw.append({"role": "assistant", "content": thinking + text + tools})
             else:
                 raw.append({"role": msg.role, "content": msg.content})
 

@@ -42,3 +42,8 @@ The `exec` tool spawns a sub-agent that gets all built-in tools except `exec` it
 ## Provider detection
 
 If `provider` is set in config, that is used. Otherwise, `"claude"` in the model name selects Anthropic, and everything else falls through to OpenAI (since most compatible APIs use that format). `base_url` overrides the endpoint for either provider.
+
+## Small
+
+Should keep as small surface as possible, shift things to plugins for beadth of features. 
+Guard what goes into core very strictly!!!

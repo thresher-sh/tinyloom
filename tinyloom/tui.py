@@ -48,6 +48,7 @@ class TinyloomApp(App):
     .tool-result { color: $text-muted; }
     .error { color: red; }
     .compaction { color: yellow; text-style: dim; }
+    .reasoning { color: dodgerblue; text-style: dim; }
     """
 
     BINDINGS = [Binding("ctrl+c", "quit", "Quit"), Binding("escape", "stop_agent", "Stop")]
@@ -119,13 +120,22 @@ class TinyloomApp(App):
         messages = self.query_one("#messages", VerticalScroll)
         text_buffer = ""
         text_widget: MessageWidget | None = None
+        reasoning_buffer = ""
+        reasoning_widget: MessageWidget | None = None
         self._show_spinner()
 
         try:
             async for evt in self.agent.step(user_input):
                 self._hide_spinner()
 
-                if evt.type == "text_delta":
+                if evt.type == "reasoning":
+                    if reasoning_widget is None:
+                        reasoning_widget = MessageWidget("", classes="reasoning")
+                        messages.mount(reasoning_widget)
+                    reasoning_buffer += evt.text
+                    reasoning_widget.update(f"[dim dodger_blue2]{self._filter(reasoning_buffer)}[/dim dodger_blue2]")
+                elif evt.type == "text_delta":
+                    reasoning_widget, reasoning_buffer = None, ""
                     if text_widget is None:
                         text_widget = MessageWidget("")
                         messages.mount(text_widget)
@@ -133,6 +143,7 @@ class TinyloomApp(App):
                     text_widget.update(self._filter(text_buffer))
                 else:
                     text_widget, text_buffer = None, ""
+                    reasoning_widget, reasoning_buffer = None, ""
 
                     if evt.type == "tool_call":
                         tc = evt.tool_call
