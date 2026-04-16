@@ -77,6 +77,7 @@ msb run python \
   -m 1G -c 2 \
   -v .:/app -w /app \
   -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  -e UV_PROJECT_ENVIRONMENT=/tmp/.venv \
   -- sh -c "pip install -q uv && uv sync --extra dev -q && uv run tinyloom 'create a hello.py and run it'"
 ```
 
@@ -96,7 +97,7 @@ msb exec tinyloom-dev -- pip install -q uv
 msb exec tinyloom-dev -- sh -c "curl -fsSL https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-aarch64-unknown-linux-gnu.tar.gz | tar xz && cp ripgrep-14.1.1-aarch64-unknown-linux-gnu/rg /usr/local/bin/"
 
 # Install tinyloom deps
-msb exec tinyloom-dev -w /app -- uv sync --extra dev
+msb exec tinyloom-dev -e UV_PROJECT_ENVIRONMENT=/tmp/.venv -w /app -- uv sync --extra dev
 ```
 
 For x86_64 Linux, replace `aarch64-unknown-linux-gnu` with `x86_64-unknown-linux-musl` in the ripgrep URL.
@@ -106,19 +107,20 @@ Run from source:
 ```bash
 msb exec tinyloom-dev -w /app \
   -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  -e UV_PROJECT_ENVIRONMENT=/tmp/.venv \
   -- uv run tinyloom "fix the failing tests"
 ```
 
 Run tests:
 
 ```bash
-msb exec tinyloom-dev -w /app -- uv run pytest tests/ -q
+msb exec tinyloom-dev -e UV_PROJECT_ENVIRONMENT=/tmp/.venv -w /app -- uv run pytest tests/ -q
 ```
 
 Run linter:
 
 ```bash
-msb exec tinyloom-dev -w /app -- uv run ruff check tinyloom/ tests/
+msb exec tinyloom-dev -e UV_PROJECT_ENVIRONMENT=/tmp/.venv -w /app -- uv run ruff check tinyloom/ tests/
 ```
 
 ### Manage
@@ -212,7 +214,7 @@ msb exec tinyloom -- date -s "$(date -u '+%Y-%m-%d %H:%M:%S')"
 
 ### `.venv` recreation warning
 
-Harmless. The host's `.venv` is mounted into the sandbox but was built with a different Python. uv detects this and recreates it automatically.
+The host's `.venv` is mounted into the sandbox but was built with a different Python. Set `UV_PROJECT_ENVIRONMENT=/tmp/.venv` (shown in the commands above) so the container uses its own venv and doesn't conflict with the host's.
 
 ## Notes
 

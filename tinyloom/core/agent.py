@@ -64,11 +64,11 @@ class Agent:
                 tools=tool_defs,
                 system=self.config.get_system_prompt([t.name for t in tool_defs]),
             ):
-                if stream_evt.type == "text":
-                    evt = AgentEvent(type="text_delta", text=stream_evt.text)
-                    ctx = {"type": "text_delta", "text": stream_evt.text}
-                    await self.hooks.emit("text_delta", ctx)
-                    if not ctx.get("skip"): yield evt
+                if stream_evt.type in ("reasoning", "text"):
+                    event_name = stream_evt.type if stream_evt.type == "reasoning" else "text_delta"
+                    ctx = {"type": event_name, "text": stream_evt.text}
+                    await self.hooks.emit(event_name, ctx)
+                    if not ctx.get("skip"): yield AgentEvent(type=event_name, text=stream_evt.text)
 
                 elif stream_evt.type == "tool_call":
                     tc = stream_evt.tool_call

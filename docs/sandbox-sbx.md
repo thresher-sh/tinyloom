@@ -91,6 +91,7 @@ sbx run shell ~/path/to/tinyloom
 Once inside:
 
 ```bash
+export UV_PROJECT_ENVIRONMENT=/tmp/.venv
 pip install uv
 uv sync --extra dev
 uv run tinyloom "fix the failing tests"
@@ -99,7 +100,7 @@ uv run tinyloom "fix the failing tests"
 ### One-shot
 
 ```bash
-sbx run shell ~/path/to/tinyloom -- -c "pip install -q uv && uv sync --extra dev -q && uv run tinyloom 'create a hello.py and run it'"
+sbx run shell ~/path/to/tinyloom -- -c "export UV_PROJECT_ENVIRONMENT=/tmp/.venv && pip install -q uv && uv sync --extra dev -q && uv run tinyloom 'create a hello.py and run it'"
 ```
 
 ### Run tests
@@ -107,6 +108,7 @@ sbx run shell ~/path/to/tinyloom -- -c "pip install -q uv && uv sync --extra dev
 Inside the sandbox shell:
 
 ```bash
+export UV_PROJECT_ENVIRONMENT=/tmp/.venv
 uv run pytest tests/ -q
 uv run ruff check tinyloom/ tests/
 ```

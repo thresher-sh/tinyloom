@@ -158,6 +158,14 @@ Use the `uv` ecosystem tools.
 
 Do not use pip or python directly.
 
+We mostly use `podman` as our local container for development.
+
+> podman exec -it -w /app \
+>  -e UV_PROJECT_ENVIRONMENT=/tmp/.venv \
+>  -e TERM=$TERM \
+>  tinyloom-dev \
+>  uv run tinyloom
+
 ## Code Style hints
 
 - 200 column soft limit on a line

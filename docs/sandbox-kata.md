@@ -90,13 +90,23 @@ docker run -dit \
 docker exec tinyloom pip install -q tinyloom
 ```
 
-Run tinyloom:
+Run tinyloom (headless):
 
 ```bash
-docker exec -w /app \
+docker exec -it -w /app \
   -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
   tinyloom \
   tinyloom "fix the failing tests"
+```
+
+Run the TUI (interactive mode -- no prompt argument):
+
+```bash
+docker exec -it -w /app \
+  -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  -e TERM=$TERM \
+  tinyloom \
+  tinyloom
 ```
 
 The only difference from plain Docker is `--runtime=kata` on the `run` command. Everything else is identical.
@@ -130,13 +140,23 @@ docker exec tinyloom-dev pip install -q uv
 docker exec -w /app tinyloom-dev uv sync --extra dev
 ```
 
-Run from source:
+Run from source (headless):
 
 ```bash
-docker exec -w /app \
+docker exec -it -w /app \
   -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
   tinyloom-dev \
   uv run tinyloom "fix the failing tests"
+```
+
+Run the TUI from source:
+
+```bash
+docker exec -it -w /app \
+  -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  -e TERM=$TERM \
+  tinyloom-dev \
+  uv run tinyloom
 ```
 
 Run tests:
@@ -230,6 +250,30 @@ sudo usermod -aG kvm $USER
 echo 1 | sudo tee /sys/module/kvm_intel/parameters/nested
 # AMD
 echo 1 | sudo tee /sys/module/kvm_amd/parameters/nested
+```
+
+### TUI is tiny or can't accept input
+
+The TUI requires a proper terminal. Always use `-it` with `docker exec`:
+
+```bash
+# wrong -- no TTY, TUI will be tiny/broken
+docker exec -w /app tinyloom tinyloom
+
+# correct
+docker exec -it -w /app -e TERM=$TERM tinyloom tinyloom
+```
+
+If the TUI still renders at the wrong size, pass the terminal dimensions explicitly:
+
+```bash
+docker exec -it -w /app \
+  -e TERM=$TERM \
+  -e COLUMNS=$(tput cols) \
+  -e LINES=$(tput lines) \
+  -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  tinyloom \
+  tinyloom
 ```
 
 ### Slow file I/O

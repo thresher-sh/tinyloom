@@ -340,6 +340,51 @@ async def test_step_cumulative_persists():
 
 
 @pytest.mark.asyncio
+async def test_reasoning_events_streamed():
+    """Reasoning events from provider should pass through agent loop."""
+    provider = _make_provider()
+
+    async def stream_with_reasoning(messages, tools, system=""):
+        yield StreamEvent(type="reasoning", text="let me think")
+        yield StreamEvent(type="reasoning", text="... about this")
+        yield StreamEvent(type="text", text="answer")
+        yield StreamEvent(type="done", message=Message(role="assistant", content="answer", reasoning="let me think... about this"))
+    provider.stream = stream_with_reasoning
+
+    agent = Agent(config=_config(), provider=provider, tools=ToolRegistry())
+    events = await _collect_events(agent.run("question"))
+
+    reasoning_events = [e for e in events if e.type == "reasoning"]
+    assert len(reasoning_events) == 2
+    assert reasoning_events[0].text == "let me think"
+    assert reasoning_events[1].text == "... about this"
+
+    rc = next(e for e in events if e.type == "response_complete")
+    assert rc.message.reasoning == "let me think... about this"
+
+
+@pytest.mark.asyncio
+async def test_reasoning_hook_can_skip():
+    """Reasoning events should be skippable via hooks."""
+    provider = _make_provider()
+
+    async def stream_with_reasoning(messages, tools, system=""):
+        yield StreamEvent(type="reasoning", text="secret thoughts")
+        yield StreamEvent(type="text", text="answer")
+        yield StreamEvent(type="done", message=Message(role="assistant", content="answer"))
+    provider.stream = stream_with_reasoning
+
+    hooks = HookRunner()
+    hooks.on("reasoning", lambda ctx: ctx.__setitem__("skip", True))
+
+    agent = Agent(config=_config(), provider=provider, tools=ToolRegistry(), hooks=hooks)
+    events = await _collect_events(agent.run("question"))
+
+    reasoning_events = [e for e in events if e.type == "reasoning"]
+    assert len(reasoning_events) == 0  # all skipped by hook
+
+
+@pytest.mark.asyncio
 async def test_none_usage_does_not_crash():
     """Provider returns no usage (e.g., third-party endpoint). Should not crash."""
     provider = _make_provider()

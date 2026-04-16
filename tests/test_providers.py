@@ -174,6 +174,39 @@ class TestOpenAIThirdPartyCompat:
         assert config.base_url is None
 
 
+class TestOpenAIReasoningFieldDetection:
+    """Ollama uses 'reasoning' while OpenAI uses 'reasoning_content'. Provider must handle both."""
+
+    def test_extract_reasoning_from_ollama_style_delta(self):
+        """Ollama sends reasoning in delta.reasoning, not delta.reasoning_content."""
+        from tinyloom.providers.openai import _get_reasoning
+        delta = SimpleNamespace(reasoning="thinking step by step", content=None, tool_calls=None)
+        assert _get_reasoning(delta) == "thinking step by step"
+
+    def test_extract_reasoning_from_openai_style_delta(self):
+        """OpenAI sends reasoning in delta.reasoning_content."""
+        from tinyloom.providers.openai import _get_reasoning
+        delta = SimpleNamespace(reasoning_content="deep thought", content=None, tool_calls=None)
+        assert _get_reasoning(delta) == "deep thought"
+
+    def test_no_reasoning_returns_none(self):
+        from tinyloom.providers.openai import _get_reasoning
+        delta = SimpleNamespace(content="hello", tool_calls=None)
+        assert _get_reasoning(delta) is None
+
+    def test_extract_reasoning_from_ollama_style_message(self):
+        """Non-streaming: Ollama sends reasoning in message.reasoning."""
+        from tinyloom.providers.openai import _get_reasoning
+        msg = SimpleNamespace(reasoning="step by step", content="answer", reasoning_content=None)
+        assert _get_reasoning(msg) == "step by step"
+
+    def test_reasoning_content_preferred_over_reasoning(self):
+        """If both exist, reasoning_content wins (OpenAI canonical)."""
+        from tinyloom.providers.openai import _get_reasoning
+        obj = SimpleNamespace(reasoning_content="from openai", reasoning="from ollama")
+        assert _get_reasoning(obj) == "from openai"
+
+
 class TestAnthropicThinking:
     """Anthropic thinking/reasoning_effort support in _build_kwargs."""
 
@@ -219,6 +252,56 @@ class TestAnthropicThinking:
         assert kwargs["output_config"] == {"effort": "high"}
 
 
+class TestAnthropicReasoningPreservation:
+    """Anthropic thinking block reconstruction in _format_messages for multi-turn."""
+
+    def test_assistant_with_reasoning_reconstructs_thinking_block(self):
+        p = _anthropic_provider()
+        tc = ToolCall(id="tc1", name="bash", input={"cmd": "ls"})
+        msgs = [Message(role="assistant", content="ok", tool_calls=[tc], reasoning="deep thought", reasoning_signature="sig_abc")]
+        result = p._format_messages(msgs)
+        assert len(result) == 1
+        content = result[0]["content"]
+        assert content[0] == {"type": "thinking", "thinking": "deep thought", "signature": "sig_abc"}
+        assert content[1] == {"type": "text", "text": "ok"}
+        assert content[2]["type"] == "tool_use"
+
+    def test_assistant_without_reasoning_no_thinking_block(self):
+        p = _anthropic_provider()
+        tc = ToolCall(id="tc1", name="bash", input={"cmd": "ls"})
+        msgs = [Message(role="assistant", content="ok", tool_calls=[tc])]
+        result = p._format_messages(msgs)
+        content = result[0]["content"]
+        assert content[0] == {"type": "text", "text": "ok"}
+        assert not any(b.get("type") == "thinking" for b in content)
+
+    def test_reasoning_signature_alone_triggers_content_array(self):
+        """Assistant with reasoning_signature but no tool_calls still gets content array."""
+        p = _anthropic_provider()
+        msgs = [Message(role="assistant", content="answer", reasoning="hmm", reasoning_signature="sig_xyz")]
+        result = p._format_messages(msgs)
+        content = result[0]["content"]
+        assert content[0] == {"type": "thinking", "thinking": "hmm", "signature": "sig_xyz"}
+        assert content[1] == {"type": "text", "text": "answer"}
+
+    def test_reasoning_without_signature_no_thinking_block(self):
+        """reasoning text without signature should not produce a thinking block (signature is required)."""
+        p = _anthropic_provider()
+        msgs = [Message(role="assistant", content="answer", reasoning="hmm")]
+        result = p._format_messages(msgs)
+        assert result[0] == {"role": "assistant", "content": "answer"}
+
+    def test_thinking_block_ordering_preserved(self):
+        """Thinking blocks must come before text and tool_use blocks."""
+        p = _anthropic_provider()
+        tc = ToolCall(id="tc1", name="read", input={"path": "/tmp"})
+        msgs = [Message(role="assistant", content="let me check", tool_calls=[tc], reasoning="analyzing...", reasoning_signature="sig_001")]
+        result = p._format_messages(msgs)
+        content = result[0]["content"]
+        types = [b["type"] for b in content]
+        assert types == ["thinking", "text", "tool_use"]
+
+
 class TestOpenAIThinking:
     """OpenAI reasoning_effort support in _build_kwargs."""
 
@@ -261,6 +344,43 @@ class TestOpenAIThinking:
         kwargs = p._build_kwargs([Message(role="user", content="hi")], system="")
         assert "temperature" not in kwargs
         assert kwargs["reasoning_effort"] == "high"
+
+
+class TestOpenAIReasoningPreservation:
+    """OpenAI reasoning_content preservation in _format_messages for multi-turn (Fireworks/OpenRouter)."""
+
+    def test_assistant_with_reasoning_includes_reasoning_content(self):
+        p = _openai_provider()
+        tc = ToolCall(id="tc1", name="bash", input={"cmd": "ls"})
+        msgs = [Message(role="assistant", content="ok", tool_calls=[tc], reasoning="deep thought")]
+        result = p._format_messages(msgs, system="")
+        assert result[0]["reasoning_content"] == "deep thought"
+
+    def test_assistant_without_reasoning_no_reasoning_content(self):
+        p = _openai_provider()
+        tc = ToolCall(id="tc1", name="bash", input={"cmd": "ls"})
+        msgs = [Message(role="assistant", content="ok", tool_calls=[tc])]
+        result = p._format_messages(msgs, system="")
+        assert "reasoning_content" not in result[0]
+
+    def test_text_only_assistant_with_reasoning(self):
+        p = _openai_provider()
+        msgs = [Message(role="assistant", content="answer", reasoning="let me think")]
+        result = p._format_messages(msgs, system="")
+        assert result[0]["content"] == "answer"
+        assert result[0]["reasoning_content"] == "let me think"
+
+    def test_text_only_assistant_without_reasoning(self):
+        p = _openai_provider()
+        msgs = [Message(role="assistant", content="answer")]
+        result = p._format_messages(msgs, system="")
+        assert "reasoning_content" not in result[0]
+
+    def test_user_message_never_gets_reasoning(self):
+        p = _openai_provider()
+        msgs = [Message(role="user", content="hello")]
+        result = p._format_messages(msgs, system="")
+        assert "reasoning_content" not in result[0]
 
 
 class TestAnthropicUsageExtraction:

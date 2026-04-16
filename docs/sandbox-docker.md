@@ -35,20 +35,30 @@ docker run -dit \
 docker exec tinyloom pip install -q tinyloom
 ```
 
-Run tinyloom:
+Run tinyloom (headless):
 
 ```bash
-docker exec -w /app \
+docker exec -it -w /app \
   -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
   tinyloom \
   tinyloom "fix the failing tests"
+```
+
+Run the TUI (interactive mode -- no prompt argument):
+
+```bash
+docker exec -it -w /app \
+  -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  -e TERM=$TERM \
+  tinyloom \
+  tinyloom
 ```
 
 Or with `uv tool`:
 
 ```bash
 docker exec tinyloom pip install -q uv
-docker exec -w /app \
+docker exec -it -w /app \
   -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
   tinyloom \
   uv tool run tinyloom "fix the failing tests"
@@ -83,6 +93,7 @@ Work against the tinyloom source repo with full dev tooling.
 docker run --rm -it \
   -v $(pwd):/app -w /app \
   -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  -e UV_PROJECT_ENVIRONMENT=/tmp/.venv \
   python:3.11-slim \
   sh -c "pip install -q uv && uv sync --extra dev -q && uv run tinyloom 'create a hello.py and run it'"
 ```
@@ -97,28 +108,40 @@ docker run -dit \
   sleep infinity
 
 docker exec tinyloom-dev pip install -q uv
-docker exec -w /app tinyloom-dev uv sync --extra dev
+docker exec -e UV_PROJECT_ENVIRONMENT=/tmp/.venv -w /app tinyloom-dev uv sync --extra dev
 ```
 
-Run from source:
+Run from source (headless):
 
 ```bash
-docker exec -w /app \
+docker exec -it -w /app \
   -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  -e UV_PROJECT_ENVIRONMENT=/tmp/.venv \
   tinyloom-dev \
   uv run tinyloom "fix the failing tests"
+```
+
+Run the TUI from source:
+
+```bash
+docker exec -it -w /app \
+  -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  -e UV_PROJECT_ENVIRONMENT=/tmp/.venv \
+  -e TERM=$TERM \
+  tinyloom-dev \
+  uv run tinyloom
 ```
 
 Run tests:
 
 ```bash
-docker exec -w /app tinyloom-dev uv run pytest tests/ -q
+docker exec -e UV_PROJECT_ENVIRONMENT=/tmp/.venv -w /app tinyloom-dev uv run pytest tests/ -q
 ```
 
 Run linter:
 
 ```bash
-docker exec -w /app tinyloom-dev uv run ruff check tinyloom/ tests/
+docker exec -e UV_PROJECT_ENVIRONMENT=/tmp/.venv -w /app tinyloom-dev uv run ruff check tinyloom/ tests/
 ```
 
 ### Manage
@@ -177,6 +200,30 @@ Run as your UID:
 
 ```bash
 docker run -dit --name tinyloom --user $(id -u):$(id -g) -v $(pwd):/app -w /app python:3.11-slim sleep infinity
+```
+
+### TUI is tiny or can't accept input
+
+The TUI requires a proper terminal. Always use `-it` with `docker exec`:
+
+```bash
+# wrong -- no TTY, TUI will be tiny/broken
+docker exec -w /app tinyloom tinyloom
+
+# correct
+docker exec -it -w /app -e TERM=$TERM tinyloom tinyloom
+```
+
+If the TUI still renders at the wrong size, pass the terminal dimensions explicitly:
+
+```bash
+docker exec -it -w /app \
+  -e TERM=$TERM \
+  -e COLUMNS=$(tput cols) \
+  -e LINES=$(tput lines) \
+  -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  tinyloom \
+  tinyloom
 ```
 
 ### Slow file I/O on macOS

@@ -33,6 +33,8 @@ class Message:
     tool_calls: list[ToolCall] = field(default_factory=list)
     tool_call_id: str = ""
     name: str = ""
+    reasoning: str | None = None
+    reasoning_signature: str | None = None  # Anthropic encrypted thinking for multi-turn
 
 @dataclass
 class StreamEvent:
@@ -58,7 +60,9 @@ class AgentEvent(StreamEvent):
         if (tc := self.tool_call) is not None:
             d["tool_call"] = {"id": tc.id, "name": tc.name, "input": tc.input}
         if (m := self.message) is not None:
-            d["message"] = {"role": m.role, "content": m.content}
+            md: dict = {"role": m.role, "content": m.content}
+            if m.reasoning: md["reasoning"] = m.reasoning
+            d["message"] = md
         if self.usage is not None:
             d["usage"] = self.usage.to_dict()
         if self.cumulative_usage is not None:

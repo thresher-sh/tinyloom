@@ -62,6 +62,13 @@ class TestMessage:
         assert msg.tool_calls == []
         assert msg.tool_call_id == ""
         assert msg.name == ""
+        assert msg.reasoning is None
+        assert msg.reasoning_signature is None
+
+    def test_message_with_reasoning(self):
+        msg = Message(role="assistant", content="answer", reasoning="let me think", reasoning_signature="sig123")
+        assert msg.reasoning == "let me think"
+        assert msg.reasoning_signature == "sig123"
 
     def test_message_tool_calls_default_is_fresh_list(self):
         msg1 = Message(role="user")
@@ -178,6 +185,18 @@ class TestAgentEvent:
             "type": "response_complete",
             "message": {"role": "assistant", "content": "all done"},
         }
+
+    def test_to_dict_includes_reasoning_in_message(self):
+        msg = Message(role="assistant", content="answer", reasoning="thinking...")
+        ev = AgentEvent(type="response_complete", message=msg)
+        d = ev.to_dict()
+        assert d["message"]["reasoning"] == "thinking..."
+
+    def test_to_dict_omits_reasoning_when_none(self):
+        msg = Message(role="assistant", content="answer")
+        ev = AgentEvent(type="response_complete", message=msg)
+        d = ev.to_dict()
+        assert "reasoning" not in d["message"]
 
     def test_to_dict_includes_error(self):
         ev = AgentEvent(type="error", error="boom")

@@ -8,6 +8,10 @@ from tinyloom.providers.base import client_kwargs, drain_sync_queue
 
 log = logging.getLogger(__name__)
 
+def _get_reasoning(obj) -> str | None:
+    """Extract reasoning from a delta or message. OpenAI uses 'reasoning_content', Ollama uses 'reasoning'."""
+    return getattr(obj, "reasoning_content", None) or getattr(obj, "reasoning", None) or None
+
 def _extract_openai_usage(usage) -> TokenUsage | None:
     if usage is None: return None
     cached = 0
@@ -25,18 +29,22 @@ class OpenAIProvider:
     async def stream(self, messages: list[Message], tools: list[ToolDef], system: str = "") -> AsyncIterator[StreamEvent]:
         kwargs = self._build_kwargs(messages, system)
         kwargs["stream"] = True
-        if not self.config.base_url: kwargs["stream_options"] = {"include_usage": True}
+        kwargs["stream_options"] = {"include_usage": True}
         if tools: kwargs["tools"] = [{"type": "function", "function": {"name": t.name, "description": t.description, "parameters": t.input_schema}} for t in tools]
 
         try:
             tool_chunks: dict[int, dict] = {}
             assembled_text = ""
+            assembled_reasoning = ""
             usage = None
 
             async for chunk in self._iter_chunks(kwargs):
                 if chunk.usage is not None: usage = _extract_openai_usage(chunk.usage)
                 if not chunk.choices: continue
                 delta = chunk.choices[0].delta
+                if rc := _get_reasoning(delta):
+                    assembled_reasoning += rc
+                    yield StreamEvent(type="reasoning", text=rc)
                 if delta.content:
                     log.debug("text delta received")
                     assembled_text += delta.content
@@ -59,7 +67,8 @@ class OpenAIProvider:
                 log.debug("tool_call complete: %s", raw["name"])
                 yield StreamEvent(type="tool_call", tool_call=tc)
 
-            yield StreamEvent(type="done", message=Message(role="assistant", content=assembled_text, tool_calls=tool_calls), usage=usage)
+            msg = Message(role="assistant", content=assembled_text, tool_calls=tool_calls, reasoning=assembled_reasoning or None)
+            yield StreamEvent(type="done", message=msg, usage=usage)
         except openai.APIError as e:
             log.error("OpenAI API error: %s", e)
             yield StreamEvent(type="error", error=str(e))
@@ -78,7 +87,8 @@ class OpenAIProvider:
         kwargs = self._build_kwargs(messages, system)
         kwargs["max_tokens"] = max_tokens
         response = await asyncio.to_thread(self.sync_client.chat.completions.create, **kwargs) if self.config.sync_http else await self.client.chat.completions.create(**kwargs)
-        return Message(role="assistant", content=response.choices[0].message.content or "")
+        reasoning = _get_reasoning(response.choices[0].message)
+        return Message(role="assistant", content=response.choices[0].message.content or "", reasoning=reasoning)
 
     async def count_tokens(self, messages: list[Message], system: str = "") -> int:
         formatted = self._format_messages(messages, system)
@@ -107,7 +117,10 @@ class OpenAIProvider:
                 calls = [{"id": tc.id, "type": "function", "function": {"name": tc.name, "arguments": json.dumps(tc.input)}} for tc in msg.tool_calls]
                 entry: dict = {"role": "assistant", "tool_calls": calls}
                 if msg.content: entry["content"] = msg.content
+                if msg.reasoning: entry["reasoning_content"] = msg.reasoning
                 result.append(entry)
             else:
-                result.append({"role": msg.role, "content": msg.content})
+                entry = {"role": msg.role, "content": msg.content}
+                if msg.role == "assistant" and msg.reasoning: entry["reasoning_content"] = msg.reasoning
+                result.append(entry)
         return result

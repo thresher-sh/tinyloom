@@ -97,6 +97,7 @@ Work against the tinyloom source repo with full dev tooling.
 podman run --rm -it \
   -v $(pwd):/app -w /app \
   -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  -e UV_PROJECT_ENVIRONMENT=/tmp/.venv \
   python:3.11-slim \
   sh -c "pip install -q uv && uv sync --extra dev -q && uv run tinyloom 'create a hello.py and run it'"
 ```
@@ -111,7 +112,7 @@ podman run -dit \
   sleep infinity
 
 podman exec tinyloom-dev pip install -q uv
-podman exec -w /app tinyloom-dev uv sync --extra dev
+podman exec -e UV_PROJECT_ENVIRONMENT=/tmp/.venv -w /app tinyloom-dev uv sync --extra dev
 ```
 
 Run from source (headless):
@@ -119,6 +120,7 @@ Run from source (headless):
 ```bash
 podman exec -it -w /app \
   -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  -e UV_PROJECT_ENVIRONMENT=/tmp/.venv \
   tinyloom-dev \
   uv run tinyloom "fix the failing tests"
 ```
@@ -128,6 +130,7 @@ Run the TUI from source:
 ```bash
 podman exec -it -w /app \
   -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \
+  -e UV_PROJECT_ENVIRONMENT=/tmp/.venv \
   -e TERM=$TERM \
   tinyloom-dev \
   uv run tinyloom
@@ -136,13 +139,13 @@ podman exec -it -w /app \
 Run tests:
 
 ```bash
-podman exec -w /app tinyloom-dev uv run pytest tests/ -q
+podman exec -e UV_PROJECT_ENVIRONMENT=/tmp/.venv -w /app tinyloom-dev uv run pytest tests/ -q
 ```
 
 Run linter:
 
 ```bash
-podman exec -w /app tinyloom-dev uv run ruff check tinyloom/ tests/
+podman exec -e UV_PROJECT_ENVIRONMENT=/tmp/.venv -w /app tinyloom-dev uv run ruff check tinyloom/ tests/
 ```
 
 ### Manage
