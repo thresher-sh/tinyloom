@@ -2,6 +2,19 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 @dataclass
+class TokenUsage:
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+
+    def __add__(self, other: TokenUsage) -> TokenUsage:
+        return TokenUsage(input_tokens=self.input_tokens + other.input_tokens, output_tokens=self.output_tokens + other.output_tokens, cache_read_tokens=self.cache_read_tokens + other.cache_read_tokens, cache_write_tokens=self.cache_write_tokens + other.cache_write_tokens)
+
+    def to_dict(self) -> dict:
+        return {"input_tokens": self.input_tokens, "output_tokens": self.output_tokens, "cache_read_tokens": self.cache_read_tokens, "cache_write_tokens": self.cache_write_tokens}
+
+@dataclass
 class ToolCall:
     id: str
     name: str

@@ -9,7 +9,49 @@ from tinyloom.core.types import (
     StreamEvent,
     ToolCall,
     ToolDef,
+    TokenUsage,
 )
+
+
+class TestTokenUsage:
+    def test_defaults_are_zero(self):
+        u = TokenUsage()
+        assert u.input_tokens == 0
+        assert u.output_tokens == 0
+        assert u.cache_read_tokens == 0
+        assert u.cache_write_tokens == 0
+
+    def test_creation_with_values(self):
+        u = TokenUsage(input_tokens=100, output_tokens=50, cache_read_tokens=80, cache_write_tokens=10)
+        assert u.input_tokens == 100
+        assert u.output_tokens == 50
+        assert u.cache_read_tokens == 80
+        assert u.cache_write_tokens == 10
+
+    def test_add(self):
+        a = TokenUsage(input_tokens=100, output_tokens=50, cache_read_tokens=80, cache_write_tokens=10)
+        b = TokenUsage(input_tokens=200, output_tokens=30, cache_read_tokens=150, cache_write_tokens=5)
+        c = a + b
+        assert c.input_tokens == 300
+        assert c.output_tokens == 80
+        assert c.cache_read_tokens == 230
+        assert c.cache_write_tokens == 15
+
+    def test_add_does_not_mutate(self):
+        a = TokenUsage(input_tokens=100)
+        b = TokenUsage(input_tokens=200)
+        c = a + b
+        assert a.input_tokens == 100
+        assert b.input_tokens == 200
+        assert c.input_tokens == 300
+
+    def test_to_dict(self):
+        u = TokenUsage(input_tokens=100, output_tokens=50, cache_read_tokens=80, cache_write_tokens=10)
+        assert u.to_dict() == {"input_tokens": 100, "output_tokens": 50, "cache_read_tokens": 80, "cache_write_tokens": 10}
+
+    def test_to_dict_zeros(self):
+        u = TokenUsage()
+        assert u.to_dict() == {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
 
 
 class TestMessage:
