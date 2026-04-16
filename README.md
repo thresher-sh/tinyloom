@@ -2,7 +2,7 @@
 
 A tiny, SDK-first coding agent harness in Python.
 
-<img src="demo.webp" alt="tinyloom demo" loop="infinite">
+![Demo](./demo.gif)
 
 ## Why this exists
 

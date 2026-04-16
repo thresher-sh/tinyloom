@@ -1,4 +1,4 @@
-Output demo.webp
+Output demo.gif
 Set Width 1200
 Set Height 800
 Set FontSize 20
