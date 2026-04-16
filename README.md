@@ -2,6 +2,8 @@
 
 A tiny, SDK-first coding agent harness in Python.
 
+<img src="demo.webp" alt="tinyloom demo" loop="infinite">
+
 ## Why this exists
 
 We needed an extremely tiny coding agent harness for [thresher](https://github.com/thresher-sh/thresher) and many harnesses just bring extra bloat we don't need. The harness bit is actually easy to implement -- it's all the extra bells and whistles that take a lot.
@@ -102,6 +104,7 @@ tinyloom is intentionally small. Extend it instead:
 - **More tools?** Connect MCP servers -- see [docs/mcp-plugin.md](docs/mcp-plugin.md)
 - **Custom logic?** Write a plugin -- see [docs/creating-plugins.md](docs/creating-plugins.md)
 - **Approval gates? Logging? Filters?** Use hooks -- see [docs/custom-hooks.md](docs/custom-hooks.md) or [docs/hook-scripts.md](docs/hook-scripts.md)
+- **Redact sensitive output?** Use the mask plugin -- see [docs/mask-plugin.md](docs/mask-plugin.md)
 - **Different model provider?** Set `base_url` -- see [docs/custom-providers.md](docs/custom-providers.md)
 
 ## Docs
@@ -113,6 +116,7 @@ tinyloom is intentionally small. Extend it instead:
 - [MCP Plugin](docs/mcp-plugin.md)
 - [Custom Providers](docs/custom-providers.md)
 - [Design Decisions](docs/design-decisions.md)
+- [Mask Plugin](docs/mask-plugin.md)
 - [Running in a Sandbox](docs/sandbox.md)
 
 ## Size

@@ -28,6 +28,11 @@ compaction:
 #   - tinyloom.plugins.todo
 #   - tinyloom.plugins.mcp
 #   - tinyloom.plugins.hook_scripts
+#   - tinyloom.plugins.mask
+
+# mask_words:
+#   - myusername
+#   - /Users/myusername
 
 # hook_scripts:
 #   tool_call:

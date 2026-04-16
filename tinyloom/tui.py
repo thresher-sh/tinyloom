@@ -58,6 +58,11 @@ class TinyloomApp(App):
         self.title = f"tinyloom - {agent.config.model.model}"
         self._spinner: SpinnerWidget | None = None
         self._plugin_tui = getattr(agent, "_subagent_tui", None)
+        self._text_filters: list = getattr(agent, "_tui_text_filters", [])
+
+    def _filter(self, text: str) -> str:
+        for fn in self._text_filters: text = fn(text)
+        return text
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -125,21 +130,21 @@ class TinyloomApp(App):
                         text_widget = MessageWidget("")
                         messages.mount(text_widget)
                     text_buffer += evt.text
-                    text_widget.update(text_buffer)
+                    text_widget.update(self._filter(text_buffer))
                 else:
                     text_widget, text_buffer = None, ""
 
                     if evt.type == "tool_call":
                         tc = evt.tool_call
-                        messages.mount(MessageWidget(f"[green]> {tc.name}[/green]({str(tc.input)[:100]})", classes="tool-call"))
+                        messages.mount(MessageWidget(self._filter(f"[green]> {tc.name}[/green]({str(tc.input)[:100]})"), classes="tool-call"))
                         if self._plugin_tui: self._plugin_tui["on_tool_call"](tc, messages.mount)
                     elif evt.type == "tool_result":
                         if self._plugin_tui: self._plugin_tui["on_tool_result"](evt, messages.mount)
-                        messages.mount(MessageWidget(f"[dim]  <- {evt.result[:200] if evt.result else '(empty)'}[/dim]", classes="tool-result"))
+                        messages.mount(MessageWidget(self._filter(f"[dim]  <- {evt.result[:200] if evt.result else '(empty)'}[/dim]"), classes="tool-result"))
                     elif evt.type == "compaction":
                         messages.mount(MessageWidget("[yellow dim]Context compacted[/yellow dim]", classes="compaction"))
                     elif evt.type == "error":
-                        messages.mount(MessageWidget(f"[red]Error: {evt.error}[/red]", classes="error"))
+                        messages.mount(MessageWidget(self._filter(f"[red]Error: {evt.error}[/red]"), classes="error"))
 
                     if evt.type in ("tool_call", "tool_result"): self._show_spinner()
                 messages.scroll_end()
@@ -174,6 +179,7 @@ class TinyloomApp(App):
             self.exit()
         else:
             messages.mount(MessageWidget(f"[red]Unknown command: {command}[/red]"))
+        messages.scroll_end()
 
 async def run_tui(agent: Agent):
     await TinyloomApp(agent).run_async()

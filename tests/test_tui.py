@@ -30,6 +30,8 @@ def _make_agent(events: list[AgentEvent] | None = None):
             await asyncio.sleep(0)
 
     agent.step = _step
+    agent._subagent_tui = None
+    agent._tui_text_filters = []
     return agent
 
 
@@ -46,6 +48,8 @@ def _slow_agent(events: list[AgentEvent], delay: float = 0.5):
             await asyncio.sleep(delay)
 
     agent.step = _step
+    agent._subagent_tui = None
+    agent._tui_text_filters = []
     return agent
 
 
