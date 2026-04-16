@@ -8,6 +8,8 @@ model:
   max_tokens: 8192
   context_window: 200000
   temperature: 0.0
+  # thinking: true         # enable extended thinking / reasoning mode
+  # reasoning_effort: medium  # low, medium, or high
   # sync_http: true  # use sync HTTP for TLS -- required in microsandbox VMs
 
 system_prompt: |

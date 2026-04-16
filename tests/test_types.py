@@ -126,6 +126,16 @@ class TestStreamEvent:
         assert ev.type == "error"
         assert ev.error == "something went wrong"
 
+    def test_done_event_with_usage(self):
+        msg = Message(role="assistant", content="done")
+        usage = TokenUsage(input_tokens=100, output_tokens=50)
+        ev = StreamEvent(type="done", message=msg, usage=usage)
+        assert ev.usage is usage
+
+    def test_usage_defaults_to_none(self):
+        ev = StreamEvent(type="text", text="hi")
+        assert ev.usage is None
+
 
 class TestAgentEvent:
     def test_to_dict_drops_empty_fields(self):
@@ -173,3 +183,36 @@ class TestAgentEvent:
         ev = AgentEvent(type="error", error="boom")
         d = ev.to_dict()
         assert d == {"type": "error", "error": "boom"}
+
+    def test_to_dict_includes_usage(self):
+        usage = TokenUsage(input_tokens=100, output_tokens=50, cache_read_tokens=80, cache_write_tokens=10)
+        ev = AgentEvent(type="response_complete", usage=usage)
+        d = ev.to_dict()
+        assert d["usage"] == {"input_tokens": 100, "output_tokens": 50, "cache_read_tokens": 80, "cache_write_tokens": 10}
+
+    def test_to_dict_includes_cumulative_usage(self):
+        cu = TokenUsage(input_tokens=500, output_tokens=200)
+        ev = AgentEvent(type="agent_stop", cumulative_usage=cu)
+        d = ev.to_dict()
+        assert d["cumulative_usage"] == {"input_tokens": 500, "output_tokens": 200, "cache_read_tokens": 0, "cache_write_tokens": 0}
+
+    def test_to_dict_includes_both_usage_fields(self):
+        usage = TokenUsage(input_tokens=100, output_tokens=50)
+        cu = TokenUsage(input_tokens=300, output_tokens=150)
+        ev = AgentEvent(type="response_complete", usage=usage, cumulative_usage=cu)
+        d = ev.to_dict()
+        assert d["usage"] == {"input_tokens": 100, "output_tokens": 50, "cache_read_tokens": 0, "cache_write_tokens": 0}
+        assert d["cumulative_usage"] == {"input_tokens": 300, "output_tokens": 150, "cache_read_tokens": 0, "cache_write_tokens": 0}
+
+    def test_to_dict_omits_usage_when_none(self):
+        ev = AgentEvent(type="text_delta", text="hello")
+        d = ev.to_dict()
+        assert "usage" not in d
+        assert "cumulative_usage" not in d
+
+    def test_to_dict_backward_compat_response_complete(self):
+        """Existing response_complete events without usage still serialize correctly."""
+        msg = Message(role="assistant", content="all done")
+        ev = AgentEvent(type="response_complete", message=msg)
+        d = ev.to_dict()
+        assert d == {"type": "response_complete", "message": {"role": "assistant", "content": "all done"}}

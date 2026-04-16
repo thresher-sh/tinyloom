@@ -28,6 +28,8 @@ class TestDefaults:
         assert mc.max_tokens == 8192
         assert mc.context_window == 200_000
         assert mc.temperature == 0.0
+        assert mc.thinking is False
+        assert mc.reasoning_effort is None
 
     def test_compaction_config_defaults(self):
         cc = CompactionConfig()
@@ -158,3 +160,21 @@ model:
         monkeypatch.setenv("OPENAI_API_KEY", "sk-openai-fallback")
         cfg = load_config()
         assert cfg.model.api_key == "sk-openai-fallback"
+
+    def test_thinking_from_yaml(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        yaml_content = "model:\n  thinking: true\n  reasoning_effort: medium\n"
+        (tmp_path / "tinyloom.yaml").write_text(yaml_content)
+        cfg = load_config()
+        assert cfg.model.thinking is True
+        assert cfg.model.reasoning_effort == "medium"
+
+    def test_thinking_defaults_preserved(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        yaml_content = "model:\n  provider: openai\n"
+        (tmp_path / "tinyloom.yaml").write_text(yaml_content)
+        cfg = load_config()
+        assert cfg.model.thinking is False
+        assert cfg.model.reasoning_effort is None

@@ -79,6 +79,8 @@ model:
   provider: anthropic
   model: claude-sonnet-4-20250514
   context_window: 200000
+  # thinking: true
+  # reasoning_effort: medium  # low, medium, or high
 
 system_prompt: You are a skilled coding assistant. Be concise.
 
@@ -96,6 +98,8 @@ max_turns: 200
 ```
 
 API keys go in environment variables, not config. See [.env.example](.env.example).
+
+Thinking/reasoning works with Anthropic, OpenAI reasoning models, Fireworks, and OpenRouter. See [custom providers](docs/custom-providers.md#thinking--reasoning) for details.
 
 ## Want more features?
 

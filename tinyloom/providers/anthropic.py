@@ -3,10 +3,19 @@ import asyncio, logging
 from typing import AsyncIterator
 import anthropic
 from tinyloom.core.config import ModelConfig
-from tinyloom.core.types import Message, StreamEvent, ToolCall, ToolDef
+from tinyloom.core.types import Message, StreamEvent, ToolCall, ToolDef, TokenUsage
 from tinyloom.providers.base import client_kwargs, drain_sync_queue
 
 log = logging.getLogger(__name__)
+
+def _extract_anthropic_usage(usage) -> TokenUsage | None:
+    if usage is None: return None
+    return TokenUsage(
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        cache_read_tokens=getattr(usage, 'cache_read_input_tokens', 0) or 0,
+        cache_write_tokens=getattr(usage, 'cache_creation_input_tokens', 0) or 0,
+    )
 
 class AnthropicProvider:
     def __init__(self, config: ModelConfig) -> None:
@@ -40,7 +49,8 @@ class AnthropicProvider:
                     log.debug("tool_call received: %s", block.name)
                     yield StreamEvent(type="tool_call", tool_call=tc)
 
-            yield StreamEvent(type="done", message=Message(role="assistant", content=assembled_text, tool_calls=tool_calls))
+            usage = _extract_anthropic_usage(final.usage if final is not None else None)
+            yield StreamEvent(type="done", message=Message(role="assistant", content=assembled_text, tool_calls=tool_calls), usage=usage)
         except anthropic.APIError as e:
             log.error("Anthropic API error: %s", e)
             yield StreamEvent(type="error", error=str(e))
@@ -70,8 +80,12 @@ class AnthropicProvider:
         return result.input_tokens
 
     def _build_kwargs(self, messages: list[Message], system: str) -> dict:
-        kwargs: dict = {"model": self.config.model, "messages": self._format_messages(messages), "temperature": self.config.temperature}
+        thinking_enabled = self.config.thinking or self.config.reasoning_effort is not None
+        kwargs: dict = {"model": self.config.model, "messages": self._format_messages(messages)}
+        if not thinking_enabled: kwargs["temperature"] = self.config.temperature
         if system: kwargs["system"] = system
+        if thinking_enabled: kwargs["thinking"] = {"type": "adaptive"}
+        if self.config.reasoning_effort: kwargs["output_config"] = {"effort": self.config.reasoning_effort}
         return kwargs
 
     def _format_messages(self, messages: list[Message]) -> list[dict]:

@@ -1,0 +1,4 @@
+[ ] Add token support for tokens on stream messages
+[ ] Add reasoning/thinking support as config https://docs.fireworks.ai/getting-started/quickstart#reasoning (see anthropic and openai sdk bits)
+[ ] Look at tool interleaving for single turn reasoning.
+[ ] Skills opt-in plugin

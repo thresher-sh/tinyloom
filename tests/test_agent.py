@@ -10,7 +10,7 @@ from tinyloom.core.agent import Agent
 from tinyloom.core.config import Config, CompactionConfig
 from tinyloom.core.hooks import HookRunner
 from tinyloom.core.tools import Tool, ToolRegistry
-from tinyloom.core.types import Message, ToolCall, StreamEvent, AgentEvent
+from tinyloom.core.types import Message, ToolCall, StreamEvent, AgentEvent, TokenUsage
 
 
 # ---------------------------------------------------------------------------
@@ -238,3 +238,118 @@ async def test_error_event_stops_loop():
     assert error_evt.error == "something broke"
     # Should not have response_complete after error
     assert "response_complete" not in types
+
+
+def _set_text_stream_with_usage(provider, texts, usage):
+    """Configure provider.stream to return a text stream with usage on done."""
+    async def stream(messages, tools, system=""):
+        full_text = "".join(texts)
+        for t in texts:
+            yield StreamEvent(type="text", text=t)
+        yield StreamEvent(type="done", message=Message(role="assistant", content=full_text), usage=usage)
+    provider.stream = stream
+
+
+def _set_tool_then_text_stream_with_usage(provider, tool_calls_list, final_text, usage_per_turn):
+    """First call returns tool_calls with usage_per_turn[0], second returns text with usage_per_turn[1]."""
+    call_count_state = {"n": 0}
+    async def stream(messages, tools, system=""):
+        idx = call_count_state["n"]
+        call_count_state["n"] += 1
+        usage = usage_per_turn[idx] if idx < len(usage_per_turn) else None
+        if idx == 0:
+            for tc in tool_calls_list:
+                yield StreamEvent(type="tool_call", tool_call=tc)
+            yield StreamEvent(type="done", message=Message(role="assistant", tool_calls=tool_calls_list), usage=usage)
+        else:
+            yield StreamEvent(type="text", text=final_text)
+            yield StreamEvent(type="done", message=Message(role="assistant", content=final_text), usage=usage)
+    provider.stream = stream
+
+
+@pytest.mark.asyncio
+async def test_response_complete_carries_usage():
+    provider = _make_provider()
+    usage = TokenUsage(input_tokens=100, output_tokens=50, cache_read_tokens=80, cache_write_tokens=10)
+    _set_text_stream_with_usage(provider, ["Hello"], usage)
+
+    agent = Agent(config=_config(), provider=provider, tools=ToolRegistry())
+    events = await _collect_events(agent.run("hi"))
+
+    rc = next(e for e in events if e.type == "response_complete")
+    assert rc.usage is not None
+    assert rc.usage.input_tokens == 100
+    assert rc.usage.output_tokens == 50
+    assert rc.usage.cache_read_tokens == 80
+    assert rc.usage.cache_write_tokens == 10
+    assert rc.cumulative_usage is not None
+    assert rc.cumulative_usage.input_tokens == 100
+
+
+@pytest.mark.asyncio
+async def test_agent_stop_carries_cumulative_usage():
+    provider = _make_provider()
+    usage = TokenUsage(input_tokens=100, output_tokens=50)
+    _set_text_stream_with_usage(provider, ["Hello"], usage)
+
+    agent = Agent(config=_config(), provider=provider, tools=ToolRegistry())
+    events = await _collect_events(agent.run("hi"))
+
+    stop = next(e for e in events if e.type == "agent_stop")
+    assert stop.cumulative_usage is not None
+    assert stop.cumulative_usage.input_tokens == 100
+    assert stop.cumulative_usage.output_tokens == 50
+
+
+@pytest.mark.asyncio
+async def test_multi_turn_accumulates_usage():
+    provider = _make_provider()
+    tc = ToolCall(id="tc_1", name="echo", input={"msg": "hi"})
+    turn1_usage = TokenUsage(input_tokens=100, output_tokens=20)
+    turn2_usage = TokenUsage(input_tokens=200, output_tokens=30)
+    _set_tool_then_text_stream_with_usage(provider, [tc], "Done", [turn1_usage, turn2_usage])
+
+    registry = ToolRegistry()
+    registry.register(_echo_tool())
+
+    agent = Agent(config=_config(), provider=provider, tools=registry)
+    events = await _collect_events(agent.run("use echo"))
+
+    rc = next(e for e in events if e.type == "response_complete")
+    assert rc.usage.input_tokens == 200  # last turn only
+    assert rc.usage.output_tokens == 30
+    assert rc.cumulative_usage.input_tokens == 300  # 100 + 200
+    assert rc.cumulative_usage.output_tokens == 50  # 20 + 30
+
+
+@pytest.mark.asyncio
+async def test_step_cumulative_persists():
+    provider = _make_provider()
+    usage = TokenUsage(input_tokens=100, output_tokens=50)
+    _set_text_stream_with_usage(provider, ["reply"], usage)
+
+    agent = Agent(config=_config(), provider=provider, tools=ToolRegistry())
+
+    events1 = await _collect_events(agent.step("first"))
+    rc1 = next(e for e in events1 if e.type == "response_complete")
+    assert rc1.cumulative_usage.input_tokens == 100
+
+    events2 = await _collect_events(agent.step("second"))
+    rc2 = next(e for e in events2 if e.type == "response_complete")
+    assert rc2.cumulative_usage.input_tokens == 200  # accumulated
+
+
+@pytest.mark.asyncio
+async def test_none_usage_does_not_crash():
+    """Provider returns no usage (e.g., third-party endpoint). Should not crash."""
+    provider = _make_provider()
+    _set_text_stream(provider, "Hello")  # existing helper, no usage
+
+    agent = Agent(config=_config(), provider=provider, tools=ToolRegistry())
+    events = await _collect_events(agent.run("hi"))
+
+    rc = next(e for e in events if e.type == "response_complete")
+    assert rc.usage is None
+    # cumulative should still be zero-valued
+    assert rc.cumulative_usage is not None
+    assert rc.cumulative_usage.input_tokens == 0

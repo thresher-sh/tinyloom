@@ -102,6 +102,63 @@ model:
 
 Set `OPENAI_API_KEY` to your Azure API key.
 
+## Thinking / reasoning
+
+Some models support extended thinking or reasoning. Set `thinking: true` to enable it, and `reasoning_effort` to control depth.
+
+### Anthropic (Claude)
+
+```yaml
+model:
+  provider: anthropic
+  model: claude-sonnet-4-20250514
+  thinking: true
+  reasoning_effort: medium  # low, medium, or high
+```
+
+Maps to `thinking: {"type": "adaptive"}` and `output_config: {"effort": "..."}` in the Anthropic API. Temperature is omitted automatically when thinking is active.
+
+### OpenAI reasoning models
+
+```yaml
+model:
+  provider: openai
+  model: o3-mini
+  reasoning_effort: medium
+```
+
+Passes `reasoning_effort` directly to the Chat Completions API. Temperature is omitted automatically (reasoning models don't support it).
+
+### Fireworks AI
+
+```yaml
+model:
+  provider: openai
+  model: accounts/fireworks/models/deepseek-r1
+  base_url: https://api.fireworks.ai/inference/v1
+  reasoning_effort: low
+```
+
+Fireworks accepts `reasoning_effort` as a top-level parameter on their OpenAI-compatible endpoint.
+
+### OpenRouter
+
+```yaml
+model:
+  provider: openai
+  model: openai/o3-mini
+  base_url: https://openrouter.ai/api/v1
+  reasoning_effort: high
+```
+
+OpenRouter normalizes `reasoning_effort` across all supported providers.
+
+### Notes
+
+- Setting `reasoning_effort` alone implies `thinking: true` (temperature is omitted, reasoning params are sent).
+- Setting `thinking: true` without `reasoning_effort` enables thinking with provider defaults.
+- Not all models support reasoning. If yours doesn't, the API will return an error.
+
 ## context_window matters
 
 Set `context_window` to match your model's actual limit. tinyloom uses this value to decide when to trigger compaction. If it is too high, the LLM call may fail with a context overflow. If it is too low, compaction fires unnecessarily.

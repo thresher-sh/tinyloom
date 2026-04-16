@@ -41,12 +41,14 @@ class StreamEvent:
     tool_call: ToolCall | None = None
     message: Message | None = None
     error: str = ""
+    usage: TokenUsage | None = None
 
 @dataclass
 class AgentEvent(StreamEvent):
     tool_call_id: str = ""
     tool_name: str = ""
     result: str = ""
+    cumulative_usage: TokenUsage | None = None
 
     def to_dict(self) -> dict:
         d: dict = {"type": self.type}
@@ -57,4 +59,8 @@ class AgentEvent(StreamEvent):
             d["tool_call"] = {"id": tc.id, "name": tc.name, "input": tc.input}
         if (m := self.message) is not None:
             d["message"] = {"role": m.role, "content": m.content}
+        if self.usage is not None:
+            d["usage"] = self.usage.to_dict()
+        if self.cumulative_usage is not None:
+            d["cumulative_usage"] = self.cumulative_usage.to_dict()
         return d
