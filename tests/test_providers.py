@@ -160,16 +160,16 @@ class TestOpenAIUsageExtraction:
         assert result == TokenUsage(input_tokens=100, output_tokens=50, cache_read_tokens=0, cache_write_tokens=0)
 
 
-class TestOpenAIThirdPartyCompat:
-    """Third-party OpenAI-compatible providers (Fireworks, etc.) don't support stream_options."""
+class TestOpenAIStreamOptions:
+    """stream_options is always sent for usage tracking (Ollama, OpenAI, and most third-party providers support it)."""
 
-    def test_no_stream_options_with_base_url(self):
-        """stream_options should not be added when base_url is set."""
+    def test_stream_options_always_included(self):
+        """stream_options should be sent for all providers including third-party."""
         config = ModelConfig(provider="openai", model="some-model", api_key="test-key", base_url="https://api.fireworks.ai/inference/v1")
         assert config.base_url is not None
 
-    def test_stream_options_without_base_url(self):
-        """stream_options should be added for vanilla OpenAI."""
+    def test_stream_options_with_vanilla_openai(self):
+        """stream_options should be sent for vanilla OpenAI too."""
         config = ModelConfig(provider="openai", model="gpt-4o", api_key="test-key")
         assert config.base_url is None
 
