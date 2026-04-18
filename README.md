@@ -1,3 +1,5 @@
+[Join Discord](https://discord.gg/VVt9qmkcnr) -- [Website: thresher.sh](https://thresher.sh)
+
 # tinyloom
 
 A tiny, SDK-first coding agent harness in Python.
