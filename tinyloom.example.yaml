@@ -29,6 +29,7 @@ compaction:
 #   - tinyloom.plugins.subagent
 #   - tinyloom.plugins.todo
 #   - tinyloom.plugins.mcp
+#   - tinyloom.plugins.exa_search
 #   - tinyloom.plugins.hook_scripts
 #   - tinyloom.plugins.mask
 
