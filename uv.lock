@@ -319,6 +319,24 @@ wheels = [
 ]
 
 [[package]]
+name = "exa-py"
+version = "2.12.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpcore" },
+    { name = "httpx" },
+    { name = "openai" },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "requests" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/71/e4/11bbbc076ae420b9e00537945d48a03cb42cc6da63edc65bf50d23e4778e/exa_py-2.12.1.tar.gz", hash = "sha256:9ff1924fbfbcae822b20c0ddef0650fabc04ac75906b9153623eadc18135b7ce", size = 55792, upload-time = "2026-04-22T20:00:38.528Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/49/19/0a504b6ce7c468595cd0551f65e5c464832a1d3af8dc8acd681e21696a5f/exa_py-2.12.1-py3-none-any.whl", hash = "sha256:9e735802161482a7d5b231376257883cb4e34dbd6f75ded04ab1a5a171b69d9f", size = 74512, upload-time = "2026-04-22T20:00:34.326Z" },
+]
+
+[[package]]
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1308,6 +1326,9 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "ruff" },
 ]
+exa = [
+    { name = "exa-py" },
+]
 mcp = [
     { name = "mcp" },
 ]
@@ -1315,6 +1336,7 @@ mcp = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=0.40" },
+    { name = "exa-py", marker = "extra == 'exa'", specifier = ">=2.0.0" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.0,<2" },
     { name = "openai", specifier = ">=1.50" },
     { name = "pytest", marker = "extra == 'dev'" },
@@ -1325,7 +1347,7 @@ requires-dist = [
     { name = "textual", specifier = ">=1.0" },
     { name = "tiktoken", specifier = ">=0.7" },
 ]
-provides-extras = ["mcp", "dev"]
+provides-extras = ["mcp", "exa", "dev"]
 
 [[package]]
 name = "tqdm"

@@ -18,6 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 mcp = ["mcp>=1.0,<2"]
+exa = ["exa-py>=2.0.0"]
 dev = ["pytest", "pytest-asyncio", "ruff"]
 
 [project.scripts]
